@@ -1,0 +1,4 @@
+# Keep local secrets out of git. The repo root already ignores .env; this also covers variants.
+.env
+.env.*
+!.env.example
