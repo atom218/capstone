@@ -20,6 +20,15 @@ responses, and checks whether the grounding helped. See
 Early. This is a placeholder scaffold. The structure below is a starting point and
 will change once the student team onboards.
 
+## Run Experiment Studio
+
+On the `journey-selection-and-design` branch, Experiment Studio lets you
+design studies, browse saved interviews, review responses, and compare results.
+See the [teammate setup and launch guide](v3_conversation_loop_evaluation/experiment_studio/README.md#run-it-locally)
+for checkout commands, macOS/Linux and Windows launch steps, optional Azure
+configuration, and instructions for sharing reviews. The local launcher needs
+Python 3 and uses only its standard library.
+
 ## Two build paths
 
 The plan offers two ways to build the same experiment, and teams can pick one or mix

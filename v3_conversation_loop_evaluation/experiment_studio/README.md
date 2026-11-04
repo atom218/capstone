@@ -43,41 +43,130 @@ and has four workspaces:
 
 ## Run it locally
 
-Double-click **Start Experiment Studio.command** in Finder, or run:
+### 1. Get the journey design branch
 
+You need access to the GitHub repository, Git, Python 3, and a web browser.
+The dashboard uses only Python's standard library: no `pip install`, Node.js,
+or notebook setup is required. An Azure key is needed only to generate new
+interviews or use the LLM judge. Saved interviews and manual reviews work
+without one.
+
+For a first checkout, open Terminal (macOS/Linux) or PowerShell (Windows):
+
+```sh
+git clone --branch journey-selection-and-design https://github.com/accenture-labs-de-sf/Synthetic-User-Personas-Accenture-x-Northwestern.git
+cd Synthetic-User-Personas-Accenture-x-Northwestern
 ```
+
+If you already have the repository, run these commands from its root instead.
+Save or commit any work in progress before switching branches.
+
+```sh
+git fetch origin
+git switch journey-selection-and-design
+git pull --ff-only origin journey-selection-and-design
+```
+
+Keep the full repository checkout. The launcher reads the saved v3 dashboard
+and imports its local helper from the parent folder.
+
+### 2. Start the dashboard
+
+On macOS/Linux, run from the repository root:
+
+```sh
 cd v3_conversation_loop_evaluation/experiment_studio
 python3 run_studio.py
 ```
 
-Either one rebuilds the page from source, serves it at
+On Windows, run from the repository root:
+
+```powershell
+cd v3_conversation_loop_evaluation/experiment_studio
+py -3 run_studio.py
+```
+
+On macOS, you can also open the `experiment_studio` folder in Finder and
+double-click **Start Experiment Studio.command**.
+
+The launcher rebuilds the page from source, serves it at
 `http://127.0.0.1:8766/experiment_studio/experiment-studio.html` (or the next
-free port if 8766 is taken), and opens it in your default browser. Keep the
-Terminal window open while you work. Press Ctrl+C or close the window to stop.
+free port if 8766 is taken), and opens it in your default browser. If no browser
+opens, copy the exact URL printed in the terminal into your browser. Keep the
+terminal window open while you work; press Ctrl+C to stop the server.
 
-Serving it this way also turns on the local helper, which relays launches and
-the LLM judge to Azure OpenAI (it reuses `../run_dashboard.py`). The model
-button in the top bar reads "Local helper" when it is active.
+The top bar should show **Local helper**. This confirms the browser can reach
+the local server; it does not confirm that Azure credentials work. Open
+**Interviews** to browse the saved runs without making a model call.
 
-### Set up the Azure key once
+### 3. Enable live interviews and the LLM judge (optional)
 
+From the `experiment_studio` folder, create your local settings file once:
+
+```sh
+# macOS/Linux
+cp .env.example .env
 ```
-cp .env.example .env     # then paste the team's key after AZURE_OPENAI_API_KEY=
+
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
 ```
 
-Get the key from the team's shared password vault, not from chat, email or
-GitHub. `.env` is git-ignored (by the repo root and by this folder's own
-`.gitignore`), so it stays on your computer. The launcher reads the key into
-the local Python process only. The browser is told that a key exists and
-receives the endpoint and deployment to prefill the connection dialog, never
-the key itself. A value already exported in your shell overrides the file, and
-a repo-root `.env` works too.
+Open `.env` in a text editor and enter the team's Azure OpenAI key after
+`AZURE_OPENAI_API_KEY=`. Confirm the endpoint, deployment name, and API version
+with the teammate who manages the Azure resource; the example file contains
+project defaults. Keep the filename exactly `.env`, not `.env.txt`.
+Do not overwrite an existing `.env` when repeating setup.
 
-Without a `.env`, you can still paste the key into the connection dialog. It is
-kept only for the current browser tab.
+Get the key from the team's shared password vault. `.env` is git-ignored and
+must stay on your computer. The launcher reads the key into the local Python
+process; the browser receives the endpoint, deployment, and an indication
+that a key is available, without receiving the file's key. Shell environment
+variables take precedence over the file, and a repo-root `.env` also works.
 
-Without the server, `experiment-studio.html` still opens directly from disk for
-designing studies, reviewing, and comparing the saved v3 runs.
+Stop and restart the launcher after changing `.env`, then reload the page.
+Click **Local helper** to open **Model connection**. If the dialog says the
+helper already has the key, leave its API key field empty. Check the endpoint
+and deployment, then select **Save connection**. Settings previously saved in
+this dialog override the endpoint and deployment supplied by `.env`.
+
+To run a study, open **Design study**, complete the configuration, and select
+**Launch comparison** (or **Run another replicate** for an existing
+configuration). Answers appear as each turn finishes. Live interviews and the
+LLM judge send requests to the configured Azure resource and use its quota.
+
+You can also enter the key directly in **Model connection** without creating
+`.env`; that key is kept in browser session storage for the current tab.
+
+### 4. Save and share your work
+
+Reviews, observations, and new runs are saved in that browser's local storage.
+They do not automatically sync to GitHub or to teammates. Use **Data → Export
+everything (JSON)** to back up or share your work; the recipient can use
+**Data → Import a JSON export**. Use **Export scores (CSV)** for a score table.
+
+Continue using the same browser profile and local URL, including its port.
+A different browser, port, or direct-file URL has separate storage. Export
+your work before changing these or clearing browser data. A teammate must
+start the dashboard on their own computer; your `127.0.0.1` URL points only
+to your computer.
+
+### If something does not open
+
+| Symptom | What to do |
+|--------|------------|
+| `python3` or `py` is not found | Install Python 3, reopen your terminal, and retry. If Windows has `python` instead of `py`, use `python run_studio.py` after confirming `python --version` reports Python 3. |
+| Git reports that the repository cannot be found or access is denied | Sign in to GitHub with an account that has access to the repository and retry the clone or fetch. |
+| The macOS double-click launcher does not run | Use the terminal command in step 2. |
+| The browser cannot reach the page | Check that the launcher is still running and use the exact URL printed in its terminal. |
+| The top bar says **Not connected** or **Direct** | Start `run_studio.py` and open its printed URL, then reload the page. |
+| Live calls fail or no API key is found | Check `.env`, restart the launcher, and check **Model connection** for saved settings that override the file. Use the error shown by the dashboard when asking the Azure resource owner for help. |
+| Reviews seem to be missing | Return to the original browser profile and port, or import your JSON backup. |
+
+For a quick look without Python, open `experiment-studio.html` directly in
+your browser. It includes the saved interviews and supports manual review;
+use the launcher above for live model calls and a consistent local URL.
 
 ## Rebuild after editing
 
