@@ -247,6 +247,10 @@ function configKey(cfg) {
   return [cfg.product, cfg.persona, cfg.profileHash || "seed", cfg.arm, cfg.arm === "baseline" ? "-" : cfg.journey,
     cfg.arm === "baseline" ? "-" : cfg.detail, cfg.arm === "baseline" ? "-" : cfg.timing, cfg.keep, cfg.profileFreq].join("|");
 }
+/* Model settings both arms must share. Saved v3 runs have none recorded (null), so they never count as a match for a new launch. */
+function modelSig(m) { return m && m.deployment ? [m.deployment, Number(m.temperature), Number(m.maxTokens), Number(m.top_p ?? 0.9)].join("|") : null; }
+function launchModel() { const c = getConn(); return { deployment: c.deployment, apiVersion: c.apiVersion, temperature: Number(c.temperature), maxTokens: Number(c.maxTokens), top_p: 0.9 }; }
+function modelLine(m) { return m && m.deployment ? `${m.deployment}, temperature ${m.temperature}, max ${m.maxTokens} tokens` : "not recorded"; }
 /* The shared policy both arms must agree on; a change here needs a new baseline. */
 function sharedKey(cfg) { return [cfg.product, cfg.persona, cfg.profileHash || "seed", cfg.keep, cfg.profileFreq].join("|"); }
 
@@ -583,6 +587,7 @@ function detectHelper() {
     return fetch(base + "api/config").then((r) => (r.ok ? r.json() : null)).then((cfg) => {
       if (!cfg) return;
       CONN.envConfig = cfg;
+      CONN.token = cfg.token || null; // per-session secret that proves the request came from this page
       CONN.helper.hasKey = CONN.helper.hasKey || !!cfg.has_key;
     }).catch(() => {});
   }).catch(() => {});
@@ -593,13 +598,13 @@ function normEndpoint(e) {
   if (!/^https?:\/\//i.test(e)) e = "https://" + e;
   return e.replace(/\/openai(\/.*)?$/i, "").replace(/\/+$/, "");
 }
-async function chat(messages, { temperature, maxTokens, json } = {}) {
-  const c = getConn();
+async function chat(messages, { temperature, maxTokens, json, deployment, apiVersion } = {}) {
+  const c = { ...getConn(), ...(deployment ? { deployment } : {}), ...(apiVersion ? { apiVersion } : {}) };
   const url = `${normEndpoint(c.endpoint)}/openai/deployments/${encodeURIComponent(c.deployment)}/chat/completions?api-version=${encodeURIComponent(c.apiVersion)}`;
   const payload = { messages, temperature: temperature ?? c.temperature, top_p: 0.9, max_tokens: maxTokens ?? c.maxTokens };
   if (json) payload.response_format = { type: "json_object" };
   const res = CONN.helper
-    ? await fetch(helperBase() + "api/chat", { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key }, body: JSON.stringify({ url, payload }) })
+    ? await fetch(helperBase() + "api/chat", { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key, ...(CONN.token ? { "X-Studio-Token": CONN.token } : {}) }, body: JSON.stringify({ url, payload }) })
     : await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key }, body: JSON.stringify(payload) });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.error ? body.error.message || JSON.stringify(body.error) : "no details returned"}`);
@@ -650,7 +655,7 @@ async function generateRun(runId, onTick) {
       const image = isScreen(qs[i]) ? qs[i].screenshot_data_uri : null;
       t.status = "running"; t.error = null; onTick && onTick();
       try {
-        const res = await chat(toMessages(run.system, built.recent, built.userText, image));
+        const res = await chat(toMessages(run.system, built.recent, built.userText, image), run.model ? { temperature: run.model.temperature, maxTokens: run.model.maxTokens, deployment: run.model.deployment, apiVersion: run.model.apiVersion } : {});
         const p = parseOut(res.text);
         Object.assign(t, {
           status: "done", reply: p.reply, think: p.think, model_state: p.state, state_before: state,
@@ -781,17 +786,97 @@ function exportScoresCsv() {
   }));
   download("experiment-studio-scores.csv", rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n"), "text/csv");
 }
+/* ---------- import validation ----------
+   Exports are shared between teammates, so every field is checked before it is stored.
+   IDs must be plain tokens; enums must be known values; text stays text (it is always escaped when shown). */
+const SAFE_ID = /^[A-Za-z0-9_.:-]{1,120}$/;
+const SAFE_ITEM = /^[A-Za-z0-9_.:-]{1,120}#[0-6]$/;
+const isStr = (v, max = 20000) => typeof v === "string" && v.length <= max;
+function cleanScore(sc) {
+  if (!sc || typeof sc !== "object") return null;
+  const v = sc.v === "na" ? "na" : [0, 1, 2, 3].includes(sc.v) ? sc.v : undefined;
+  const out = { evidence: Array.isArray(sc.evidence) ? sc.evidence.filter((e) => e && isStr(e.text, 2000)).slice(0, 20).map((e) => ({ text: e.text })) : [], note: isStr(sc.note, 4000) ? sc.note : "" };
+  if (v !== undefined) out.v = v;
+  return out;
+}
+function cleanReview(r) {
+  if (!r || typeof r !== "object") return null;
+  const out = { scores: {}, flags: {} };
+  ALL_CRIT.forEach((c) => { const sc = cleanScore(r.scores && r.scores[c.id]); if (sc) out.scores[c.id] = sc; });
+  const f = r.flags && r.flags.factual;
+  if (f && typeof f === "object") out.flags.factual = { on: !!f.on, note: isStr(f.note, 4000) ? f.note : "" };
+  ["startedAt", "updatedAt", "commonSubmittedAt", "implSubmittedAt"].forEach((k) => { if (isStr(r[k], 40)) out[k] = r[k]; });
+  if (r.commonAudit && typeof r.commonAudit === "object") out.commonAudit = Object.fromEntries(COMMON.map((c) => [c.id, r.commonAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.commonAudit[c.id]) ? r.commonAudit[c.id] : undefined]));
+  if (r.demo) out.demo = true;
+  return out;
+}
+function cleanCfg(c) {
+  if (!c || typeof c !== "object") return null;
+  if (!DATA.products[c.product] || !DATA.persona_texts[c.persona] || !["baseline", "grounded"].includes(c.arm)) return null;
+  if (!HISTORY[c.keep] || !PROFILE_FREQ[c.profileFreq]) return null;
+  if (c.arm === "grounded" && (!DATA.cycles[c.journey] || !DETAIL[c.detail] || !TIMING[c.timing])) return null;
+  return {
+    product: c.product, persona: c.persona, profileHash: isStr(c.profileHash, 40) && SAFE_ID.test(c.profileHash) ? c.profileHash : "seed",
+    profileText: isStr(c.profileText, 8000) ? c.profileText : null, arm: c.arm,
+    journey: c.arm === "grounded" ? c.journey : null, detail: c.arm === "grounded" ? c.detail : null, timing: c.arm === "grounded" ? c.timing : null,
+    keep: Number(c.keep), profileFreq: c.profileFreq,
+  };
+}
+function cleanRun(id, r) {
+  if (!SAFE_ID.test(id) || !r || typeof r !== "object" || SAVED_RUNS[id]) return null;
+  const cfg = cleanCfg(r.cfg); if (!cfg || !Array.isArray(r.turns) || r.turns.length !== questionsOf(cfg.product).length) return null;
+  const m = r.model && typeof r.model === "object" && isStr(r.model.deployment, 100) ? { deployment: r.model.deployment, apiVersion: isStr(r.model.apiVersion, 40) ? r.model.apiVersion : "", temperature: Number(r.model.temperature) || 0, maxTokens: Number(r.model.maxTokens) || 0, top_p: Number(r.model.top_p ?? 0.9) } : null;
+  return {
+    id, origin: "live", cfg, profileText: cfg.profileText, replicate: Number(r.replicate) || 1, createdAt: isStr(r.createdAt, 40) ? r.createdAt : null,
+    system: buildCard(cfg.profileText || DATA.persona_texts[cfg.persona], rulesFor(cfg)), model: m,
+    versions: r.versions && typeof r.versions === "object" ? Object.fromEntries(["persona", "pack", "journey", "loop"].map((k) => [k, isStr(r.versions[k], 80) ? r.versions[k] : ""])) : { persona: "", pack: "", journey: "", loop: "" },
+    approvedProfile: null,
+    turns: r.turns.map((t, i) => {
+      const st = ["done", "failed", "pending"].includes(t && t.status) ? t.status : "pending";
+      const o = { i, status: st };
+      ["reply", "think", "state_before", "state_after", "model_state", "user", "error", "at"].forEach((k) => { if (t && isStr(t[k])) o[k] = t[k]; });
+      if (st === "done" && !o.reply) o.status = "pending";
+      o.words = o.reply ? wordsOf(o.reply) : 0;
+      o.tokens = t && Number.isFinite(t.tokens) ? t.tokens : null;
+      o.recent = Array.isArray(t && t.recent) ? t.recent.filter((x) => x && isStr(x.q) && isStr(x.r)).map((x) => ({ q: x.q, r: x.r })) : [];
+      return o;
+    }),
+  };
+}
+function cleanStudy(id, s, knownRun) {
+  if (!SAFE_ID.test(id) || !s || typeof s !== "object" || SAVED_STUDIES[id] || !DATA.products[s.product]) return null;
+  const runs = (arr) => (Array.isArray(arr) ? arr.filter((r) => typeof r === "string" && SAFE_ID.test(r) && knownRun(r)) : []);
+  const g = runs(s.groundedRuns), b = runs(s.baselineRuns);
+  if (!g.length && !b.length) return null;
+  return { id, origin: "live", name: isStr(s.name, 200) ? s.name : "Imported study", product: s.product, decision: isStr(s.decision, 1000) ? s.decision : "", groundedRuns: g, baselineRuns: b, createdAt: isStr(s.createdAt, 40) ? s.createdAt : null };
+}
+function cleanObservation(o) {
+  if (!o || !SAFE_ID.test(o.id || "") || !studyById(o.study) || !Number.isInteger(o.q) || o.q < 0 || o.q > 6) return null;
+  const quotes = (a) => (Array.isArray(a) ? a.filter((x) => isStr(x, 2000)).slice(0, 20) : []);
+  const base = quotes(o.base), grnd = quotes(o.grnd);
+  const kind = o.kind === "none" ? "none" : base.length && grnd.length ? "both" : base.length ? "baseline" : grnd.length ? "config" : null;
+  if (!kind) return null;
+  return { id: o.id, study: o.study, q: o.q, title: isStr(o.title, 2000) ? o.title : "", base, grnd, kind, author: isStr(o.author, 120) ? o.author : "", at: isStr(o.at, 40) ? o.at : "" };
+}
 function importAll(file) {
   const fr = new FileReader();
   fr.onload = () => {
     const j = safeJson(fr.result, null);
-    if (!j || !j.reviews) { toast("That file is not an Experiment Studio export."); return; }
-    Object.entries(j.reviews).forEach(([ek, items]) => { STORE.reviews[ek] = { ...(STORE.reviews[ek] || {}), ...items }; });
-    Object.assign(STORE.liveRuns, j.liveRuns || {});
-    Object.assign(STORE.liveStudies, j.liveStudies || {});
+    if (!j || typeof j !== "object" || !j.reviews || typeof j.reviews !== "object") { toast("That file is not an Experiment Studio export."); return; }
+    let skipped = 0, added = 0;
+    Object.entries(j.liveRuns || {}).forEach(([id, r]) => { const c = cleanRun(id, r); if (c) { STORE.liveRuns[id] = c; added++; } else skipped++; });
+    Object.entries(j.liveStudies || {}).forEach(([id, s]) => { const c = cleanStudy(id, s, (rid) => !!runById(rid)); if (c) { STORE.liveStudies[id] = c; added++; } else skipped++; });
+    Object.entries(j.reviews).forEach(([ek, items]) => {
+      if (!/^(human:[^"<>\n]{1,80}|llm:[A-Za-z0-9_.:-]{1,80}|jev)$/.test(ek) || !items || typeof items !== "object") { skipped++; return; }
+      Object.entries(items).forEach(([id, r]) => {
+        const c = SAFE_ITEM.test(id) && itemContext(id) ? cleanReview(r) : null;
+        if (c) { STORE.reviews[ek] = STORE.reviews[ek] || {}; STORE.reviews[ek][id] = c; added++; } else skipped++;
+      });
+    });
     const have = new Set(STORE.observations.map((o) => o.id));
-    (j.observations || []).forEach((o) => { if (!have.has(o.id)) STORE.observations.push(o); });
-    persist(true); toast("Imported reviews, runs and observations"); App.render();
+    (Array.isArray(j.observations) ? j.observations : []).forEach((o) => { const c = cleanObservation(o); if (c && !have.has(c.id)) { STORE.observations.push(c); added++; } else if (!c) skipped++; });
+    persist(true); App.render();
+    toast(skipped ? `Imported ${added} items. Skipped ${skipped} that were malformed or unrecognized.` : `Imported ${added} items`);
   };
   fr.readAsText(file);
 }

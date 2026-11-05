@@ -724,6 +724,19 @@ table.scope-table td { padding: 4px; text-align: center; border-top: 1px solid #
 .scope-cell[aria-pressed="true"] { background: #1f1d3d; border-color: #1f1d3d; }
 .scope-cell:hover { border-color: #8d8ba7; }
 
+/* compare: question strip */
+.qstrip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.qs-btn { border: 0; border-radius: 12px; padding: 9px 10px; background: #f4f3fa; text-align: left; display: grid; gap: 2px; transition: background .12s, box-shadow .12s; }
+.qs-btn:hover { background: #ecebf6; }
+.qs-btn[aria-pressed="true"] { background: #1f1d3d; color: #fff; }
+.qs-btn[aria-pressed="true"] .faint { color: #b7b4d0; }
+.qs-top { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.qs-screen { font-size: 10.5px; padding: 0 6px; border-radius: 999px; background: rgba(91,91,214,.12); color: #3a3768; }
+.qs-btn[aria-pressed="true"] .qs-screen { background: rgba(255,255,255,.16); color: #fff; }
+.qs-d { font-size: 11.5px; font-weight: 600; }
+.qs-d.up { color: #1d7f62; } .qs-d.down { color: #b8364a; }
+.qs-btn[aria-pressed="true"] .qs-d.up { color: #7fe0bf; } .qs-btn[aria-pressed="true"] .qs-d.down { color: #f5a3ae; }
+
 </style>
 </head>
 <body>
@@ -985,6 +998,10 @@ function configKey(cfg) {
   return [cfg.product, cfg.persona, cfg.profileHash || "seed", cfg.arm, cfg.arm === "baseline" ? "-" : cfg.journey,
     cfg.arm === "baseline" ? "-" : cfg.detail, cfg.arm === "baseline" ? "-" : cfg.timing, cfg.keep, cfg.profileFreq].join("|");
 }
+/* Model settings both arms must share. Saved v3 runs have none recorded (null), so they never count as a match for a new launch. */
+function modelSig(m) { return m && m.deployment ? [m.deployment, Number(m.temperature), Number(m.maxTokens), Number(m.top_p ?? 0.9)].join("|") : null; }
+function launchModel() { const c = getConn(); return { deployment: c.deployment, apiVersion: c.apiVersion, temperature: Number(c.temperature), maxTokens: Number(c.maxTokens), top_p: 0.9 }; }
+function modelLine(m) { return m && m.deployment ? `${m.deployment}, temperature ${m.temperature}, max ${m.maxTokens} tokens` : "not recorded"; }
 /* The shared policy both arms must agree on; a change here needs a new baseline. */
 function sharedKey(cfg) { return [cfg.product, cfg.persona, cfg.profileHash || "seed", cfg.keep, cfg.profileFreq].join("|"); }
 
@@ -1321,6 +1338,7 @@ function detectHelper() {
     return fetch(base + "api/config").then((r) => (r.ok ? r.json() : null)).then((cfg) => {
       if (!cfg) return;
       CONN.envConfig = cfg;
+      CONN.token = cfg.token || null; // per-session secret that proves the request came from this page
       CONN.helper.hasKey = CONN.helper.hasKey || !!cfg.has_key;
     }).catch(() => {});
   }).catch(() => {});
@@ -1331,13 +1349,13 @@ function normEndpoint(e) {
   if (!/^https?:\/\//i.test(e)) e = "https://" + e;
   return e.replace(/\/openai(\/.*)?$/i, "").replace(/\/+$/, "");
 }
-async function chat(messages, { temperature, maxTokens, json } = {}) {
-  const c = getConn();
+async function chat(messages, { temperature, maxTokens, json, deployment, apiVersion } = {}) {
+  const c = { ...getConn(), ...(deployment ? { deployment } : {}), ...(apiVersion ? { apiVersion } : {}) };
   const url = `${normEndpoint(c.endpoint)}/openai/deployments/${encodeURIComponent(c.deployment)}/chat/completions?api-version=${encodeURIComponent(c.apiVersion)}`;
   const payload = { messages, temperature: temperature ?? c.temperature, top_p: 0.9, max_tokens: maxTokens ?? c.maxTokens };
   if (json) payload.response_format = { type: "json_object" };
   const res = CONN.helper
-    ? await fetch(helperBase() + "api/chat", { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key }, body: JSON.stringify({ url, payload }) })
+    ? await fetch(helperBase() + "api/chat", { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key, ...(CONN.token ? { "X-Studio-Token": CONN.token } : {}) }, body: JSON.stringify({ url, payload }) })
     : await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key }, body: JSON.stringify(payload) });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.error ? body.error.message || JSON.stringify(body.error) : "no details returned"}`);
@@ -1388,7 +1406,7 @@ async function generateRun(runId, onTick) {
       const image = isScreen(qs[i]) ? qs[i].screenshot_data_uri : null;
       t.status = "running"; t.error = null; onTick && onTick();
       try {
-        const res = await chat(toMessages(run.system, built.recent, built.userText, image));
+        const res = await chat(toMessages(run.system, built.recent, built.userText, image), run.model ? { temperature: run.model.temperature, maxTokens: run.model.maxTokens, deployment: run.model.deployment, apiVersion: run.model.apiVersion } : {});
         const p = parseOut(res.text);
         Object.assign(t, {
           status: "done", reply: p.reply, think: p.think, model_state: p.state, state_before: state,
@@ -1519,17 +1537,97 @@ function exportScoresCsv() {
   }));
   download("experiment-studio-scores.csv", rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n"), "text/csv");
 }
+/* ---------- import validation ----------
+   Exports are shared between teammates, so every field is checked before it is stored.
+   IDs must be plain tokens; enums must be known values; text stays text (it is always escaped when shown). */
+const SAFE_ID = /^[A-Za-z0-9_.:-]{1,120}$/;
+const SAFE_ITEM = /^[A-Za-z0-9_.:-]{1,120}#[0-6]$/;
+const isStr = (v, max = 20000) => typeof v === "string" && v.length <= max;
+function cleanScore(sc) {
+  if (!sc || typeof sc !== "object") return null;
+  const v = sc.v === "na" ? "na" : [0, 1, 2, 3].includes(sc.v) ? sc.v : undefined;
+  const out = { evidence: Array.isArray(sc.evidence) ? sc.evidence.filter((e) => e && isStr(e.text, 2000)).slice(0, 20).map((e) => ({ text: e.text })) : [], note: isStr(sc.note, 4000) ? sc.note : "" };
+  if (v !== undefined) out.v = v;
+  return out;
+}
+function cleanReview(r) {
+  if (!r || typeof r !== "object") return null;
+  const out = { scores: {}, flags: {} };
+  ALL_CRIT.forEach((c) => { const sc = cleanScore(r.scores && r.scores[c.id]); if (sc) out.scores[c.id] = sc; });
+  const f = r.flags && r.flags.factual;
+  if (f && typeof f === "object") out.flags.factual = { on: !!f.on, note: isStr(f.note, 4000) ? f.note : "" };
+  ["startedAt", "updatedAt", "commonSubmittedAt", "implSubmittedAt"].forEach((k) => { if (isStr(r[k], 40)) out[k] = r[k]; });
+  if (r.commonAudit && typeof r.commonAudit === "object") out.commonAudit = Object.fromEntries(COMMON.map((c) => [c.id, r.commonAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.commonAudit[c.id]) ? r.commonAudit[c.id] : undefined]));
+  if (r.demo) out.demo = true;
+  return out;
+}
+function cleanCfg(c) {
+  if (!c || typeof c !== "object") return null;
+  if (!DATA.products[c.product] || !DATA.persona_texts[c.persona] || !["baseline", "grounded"].includes(c.arm)) return null;
+  if (!HISTORY[c.keep] || !PROFILE_FREQ[c.profileFreq]) return null;
+  if (c.arm === "grounded" && (!DATA.cycles[c.journey] || !DETAIL[c.detail] || !TIMING[c.timing])) return null;
+  return {
+    product: c.product, persona: c.persona, profileHash: isStr(c.profileHash, 40) && SAFE_ID.test(c.profileHash) ? c.profileHash : "seed",
+    profileText: isStr(c.profileText, 8000) ? c.profileText : null, arm: c.arm,
+    journey: c.arm === "grounded" ? c.journey : null, detail: c.arm === "grounded" ? c.detail : null, timing: c.arm === "grounded" ? c.timing : null,
+    keep: Number(c.keep), profileFreq: c.profileFreq,
+  };
+}
+function cleanRun(id, r) {
+  if (!SAFE_ID.test(id) || !r || typeof r !== "object" || SAVED_RUNS[id]) return null;
+  const cfg = cleanCfg(r.cfg); if (!cfg || !Array.isArray(r.turns) || r.turns.length !== questionsOf(cfg.product).length) return null;
+  const m = r.model && typeof r.model === "object" && isStr(r.model.deployment, 100) ? { deployment: r.model.deployment, apiVersion: isStr(r.model.apiVersion, 40) ? r.model.apiVersion : "", temperature: Number(r.model.temperature) || 0, maxTokens: Number(r.model.maxTokens) || 0, top_p: Number(r.model.top_p ?? 0.9) } : null;
+  return {
+    id, origin: "live", cfg, profileText: cfg.profileText, replicate: Number(r.replicate) || 1, createdAt: isStr(r.createdAt, 40) ? r.createdAt : null,
+    system: buildCard(cfg.profileText || DATA.persona_texts[cfg.persona], rulesFor(cfg)), model: m,
+    versions: r.versions && typeof r.versions === "object" ? Object.fromEntries(["persona", "pack", "journey", "loop"].map((k) => [k, isStr(r.versions[k], 80) ? r.versions[k] : ""])) : { persona: "", pack: "", journey: "", loop: "" },
+    approvedProfile: null,
+    turns: r.turns.map((t, i) => {
+      const st = ["done", "failed", "pending"].includes(t && t.status) ? t.status : "pending";
+      const o = { i, status: st };
+      ["reply", "think", "state_before", "state_after", "model_state", "user", "error", "at"].forEach((k) => { if (t && isStr(t[k])) o[k] = t[k]; });
+      if (st === "done" && !o.reply) o.status = "pending";
+      o.words = o.reply ? wordsOf(o.reply) : 0;
+      o.tokens = t && Number.isFinite(t.tokens) ? t.tokens : null;
+      o.recent = Array.isArray(t && t.recent) ? t.recent.filter((x) => x && isStr(x.q) && isStr(x.r)).map((x) => ({ q: x.q, r: x.r })) : [];
+      return o;
+    }),
+  };
+}
+function cleanStudy(id, s, knownRun) {
+  if (!SAFE_ID.test(id) || !s || typeof s !== "object" || SAVED_STUDIES[id] || !DATA.products[s.product]) return null;
+  const runs = (arr) => (Array.isArray(arr) ? arr.filter((r) => typeof r === "string" && SAFE_ID.test(r) && knownRun(r)) : []);
+  const g = runs(s.groundedRuns), b = runs(s.baselineRuns);
+  if (!g.length && !b.length) return null;
+  return { id, origin: "live", name: isStr(s.name, 200) ? s.name : "Imported study", product: s.product, decision: isStr(s.decision, 1000) ? s.decision : "", groundedRuns: g, baselineRuns: b, createdAt: isStr(s.createdAt, 40) ? s.createdAt : null };
+}
+function cleanObservation(o) {
+  if (!o || !SAFE_ID.test(o.id || "") || !studyById(o.study) || !Number.isInteger(o.q) || o.q < 0 || o.q > 6) return null;
+  const quotes = (a) => (Array.isArray(a) ? a.filter((x) => isStr(x, 2000)).slice(0, 20) : []);
+  const base = quotes(o.base), grnd = quotes(o.grnd);
+  const kind = o.kind === "none" ? "none" : base.length && grnd.length ? "both" : base.length ? "baseline" : grnd.length ? "config" : null;
+  if (!kind) return null;
+  return { id: o.id, study: o.study, q: o.q, title: isStr(o.title, 2000) ? o.title : "", base, grnd, kind, author: isStr(o.author, 120) ? o.author : "", at: isStr(o.at, 40) ? o.at : "" };
+}
 function importAll(file) {
   const fr = new FileReader();
   fr.onload = () => {
     const j = safeJson(fr.result, null);
-    if (!j || !j.reviews) { toast("That file is not an Experiment Studio export."); return; }
-    Object.entries(j.reviews).forEach(([ek, items]) => { STORE.reviews[ek] = { ...(STORE.reviews[ek] || {}), ...items }; });
-    Object.assign(STORE.liveRuns, j.liveRuns || {});
-    Object.assign(STORE.liveStudies, j.liveStudies || {});
+    if (!j || typeof j !== "object" || !j.reviews || typeof j.reviews !== "object") { toast("That file is not an Experiment Studio export."); return; }
+    let skipped = 0, added = 0;
+    Object.entries(j.liveRuns || {}).forEach(([id, r]) => { const c = cleanRun(id, r); if (c) { STORE.liveRuns[id] = c; added++; } else skipped++; });
+    Object.entries(j.liveStudies || {}).forEach(([id, s]) => { const c = cleanStudy(id, s, (rid) => !!runById(rid)); if (c) { STORE.liveStudies[id] = c; added++; } else skipped++; });
+    Object.entries(j.reviews).forEach(([ek, items]) => {
+      if (!/^(human:[^"<>\n]{1,80}|llm:[A-Za-z0-9_.:-]{1,80}|jev)$/.test(ek) || !items || typeof items !== "object") { skipped++; return; }
+      Object.entries(items).forEach(([id, r]) => {
+        const c = SAFE_ITEM.test(id) && itemContext(id) ? cleanReview(r) : null;
+        if (c) { STORE.reviews[ek] = STORE.reviews[ek] || {}; STORE.reviews[ek][id] = c; added++; } else skipped++;
+      });
+    });
     const have = new Set(STORE.observations.map((o) => o.id));
-    (j.observations || []).forEach((o) => { if (!have.has(o.id)) STORE.observations.push(o); });
-    persist(true); toast("Imported reviews, runs and observations"); App.render();
+    (Array.isArray(j.observations) ? j.observations : []).forEach((o) => { const c = cleanObservation(o); if (c && !have.has(c.id)) { STORE.observations.push(c); added++; } else if (!c) skipped++; });
+    persist(true); App.render();
+    toast(skipped ? `Imported ${added} items. Skipped ${skipped} that were malformed or unrecognized.` : `Imported ${added} items`);
   };
   fr.readAsText(file);
 }
@@ -1594,6 +1692,10 @@ function completedRunsMatching(cfg) {
   return Object.values(allRuns()).filter((r) => configKey(r.cfg) === k && r.turns.every((t) => t.status === "done"));
 }
 
+function reusableBaselines(d) {
+  const sig = modelSig(launchModel());
+  return completedRunsMatching(baselineCfg(d)).filter((r) => modelSig(r.model) === sig);
+}
 const Design = {
   render() {
     const d = draft();
@@ -1614,7 +1716,7 @@ const Design = {
   socket(d, s, i) {
     const filled = stepFilled(d, s.id);
     const val = this.socketValue(d, s.id);
-    return `<div class="socket${filled ? " filled" : ""}${d.step === s.id ? " active" : ""}" role="listitem" data-drop="${this.socketAccepts(s.id)}" data-drop-id="${s.id}">
+    return `<div class="socket${filled ? " filled" : ""}${d.step === s.id ? " active" : ""}" role="listitem" data-drop="${this.socketAccepts(s.id)}" data-drop-id="${esc(s.id)}">
       <button class="sr-btn" data-action="step" data-step="${s.id}" style="all:unset;position:absolute;inset:0;border-radius:16px;cursor:pointer" aria-label="Open step ${i + 1}: ${s.name}"></button>
       <div class="s-step"><b>${filled ? "✓" : i + 1}</b>${s.name}</div>
       ${val ? `<div class="s-name">${esc(val.title)}</div><div class="s-val">${esc(val.sub || "")}</div>` : `<div class="s-empty">${this.socketEmpty(s.id)}</div>`}
@@ -1644,7 +1746,7 @@ const Design = {
     if (d.step === "product") {
       return head("Products", "Drag a product into the first socket, or press Enter on it.") + `<div class="tray-list">${PRODUCTS.map((p) => {
         const qs = questionsOf(p.id); const screens = qs.filter(isScreen).length;
-        return `<div class="block${d.product === p.id ? " placed" : ""}${p.missing ? " disabled" : ""}" ${p.missing ? 'aria-disabled="true"' : `data-drag="product" data-value="${p.id}" data-default-drop="product" tabindex="0"`}>
+        return `<div class="block${d.product === p.id ? " placed" : ""}${p.missing ? " disabled" : ""}" ${p.missing ? 'aria-disabled="true"' : `data-drag="product" data-value="${esc(p.id)}" data-default-drop="product" tabindex="0"`}>
           <div class="b-title">${esc(p.name)}</div><div class="b-sub">${esc(p.blurb)}</div>
           <div class="b-meta">${p.missing ? `<span class="chip warn">Question pack not in this branch</span>` : `<span class="chip">${qs.length} questions</span><span class="chip">${screens} screens</span>`}</div>
         </div>`;
@@ -1652,7 +1754,7 @@ const Design = {
     }
     if (d.step === "audience") {
       return head("Saved personas", "Saved personas come from the team's standard persona dataset.") + `<div class="tray-list">${PERSONAS.map((p) => `
-        <div class="block${d.persona === p.id ? " placed" : ""}" data-drag="persona" data-value="${p.id}" data-default-drop="audience" tabindex="0">
+        <div class="block${d.persona === p.id ? " placed" : ""}" data-drag="persona" data-value="${esc(p.id)}" data-default-drop="audience" tabindex="0">
           <div class="b-title">${esc(p.name)}</div><div class="b-sub">${esc(p.variant)}. ${esc(p.note)}.</div>
           <div class="b-meta"><span class="chip">${wordsOf(DATA.persona_texts[p.id])} words</span>${p.id === "full_description" ? '<span class="chip ok">Has a matched baseline</span>' : '<span class="chip warn">No saved baseline</span>'}</div>
         </div>`).join("")}</div>
@@ -1663,7 +1765,7 @@ const Design = {
     }
     if (d.step === "journey") {
       return head("Journeys", "Drag one into the socket to use it. Drag two or three into the comparison area to compare first.") + `<div class="tray-list">${Object.values(DATA.cycles).map((c) => `
-        <div class="block journey-card${d.journey === c.id ? " placed" : ""}" data-drag="journey" data-value="${c.id}" data-default-drop="journey" tabindex="0">
+        <div class="block journey-card${d.journey === c.id ? " placed" : ""}" data-drag="journey" data-value="${esc(c.id)}" data-default-drop="journey" tabindex="0">
           <div class="b-title">${esc(c.short_title.replace(/^Cycle \d: /, ""))}</div>
           ${sparkline(c, { key: "t" })}
           <div class="b-sub">${esc(c.description)}</div>
@@ -1671,15 +1773,15 @@ const Design = {
     }
     if (d.step === "delivery") {
       return head("Cue detail", "How much of the journey the card describes.") +
-        `<div class="token-row">${Object.entries(DETAIL).map(([k, v]) => `<div class="block token${d.detail === k ? " placed" : ""}" data-drag="detail" data-value="${k}" data-default-drop="delivery" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
+        `<div class="token-row">${Object.entries(DETAIL).map(([k, v]) => `<div class="block token${d.detail === k ? " placed" : ""}" data-drag="detail" data-value="${esc(k)}" data-default-drop="delivery" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
         <div style="margin-top:18px">${head("Cue timing", "When the journey reaches the model.")}</div>
-        <div class="token-row">${Object.entries(TIMING).map(([k, v]) => `<div class="block token${d.timing === k ? " placed" : ""}" data-drag="timing" data-value="${k}" data-default-drop="delivery" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
+        <div class="token-row">${Object.entries(TIMING).map(([k, v]) => `<div class="block token${d.timing === k ? " placed" : ""}" data-drag="timing" data-value="${esc(k)}" data-default-drop="delivery" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
         <p class="tray-hint" style="margin-top:14px">The saved runs used two pairings: brief with opening turn only, and detailed with every turn plus full trajectory.</p>`;
     }
     return head("Prior-answer history", "What the persona can see of its own earlier answers.") +
-      `<div class="token-row">${Object.entries(HISTORY).map(([k, v]) => `<div class="block token${String(d.keep) === k ? " placed" : ""}" data-drag="history" data-value="${k}" data-default-drop="carry" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
+      `<div class="token-row">${Object.entries(HISTORY).map(([k, v]) => `<div class="block token${String(d.keep) === k ? " placed" : ""}" data-drag="history" data-value="${esc(k)}" data-default-drop="carry" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
       <div style="margin-top:18px">${head("Persona profile", "How often the model receives it.")}</div>
-      <div class="token-row">${Object.entries(PROFILE_FREQ).map(([k, v]) => `<div class="block token${d.profileFreq === k ? " placed" : ""}" data-drag="freq" data-value="${k}" data-default-drop="carry" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>`;
+      <div class="token-row">${Object.entries(PROFILE_FREQ).map(([k, v]) => `<div class="block token${d.profileFreq === k ? " placed" : ""}" data-drag="freq" data-value="${esc(k)}" data-default-drop="carry" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>`;
   },
 
   /* ---------- canvas per step ---------- */
@@ -1738,7 +1840,7 @@ const Design = {
         ${cmp.map((c, k) => `<polyline points="${c.stage_sentiments.map((v, i) => `${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="${colors[k]}" stroke-width="2.2" stroke-linejoin="round"/>
           ${c.stage_sentiments.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="${colors[k]}" stroke="#fff" stroke-width="1.5"><title>${esc(c.short_title)} · stage ${i + 1}: ${v}</title></circle>`).join("")}`).join("")}
       </svg>
-      <div class="legend">${cmp.map((c, k) => `<span><i style="background:${colors[k]}"></i>${esc(c.short_title.replace(/^Cycle \d: /, ""))} <button class="btn ghost sm" data-action="uncompare" data-id="${c.id}" aria-label="Remove from comparison">${ICON.x}</button></span>`).join("")}</div>`;
+      <div class="legend">${cmp.map((c, k) => `<span><i style="background:${colors[k]}"></i>${esc(c.short_title.replace(/^Cycle \d: /, ""))} <button class="btn ghost sm" data-action="uncompare" data-id="${esc(c.id)}" aria-label="Remove from comparison">${ICON.x}</button></span>`).join("")}</div>`;
     }
     return `<div class="panel-head"><h2>Compare, then choose</h2><span class="faint small">Journey choice is independent of the persona's demographics</span></div>
       <div class="dropzone" data-drop="journey" data-drop-id="compare" aria-label="Comparison area">
@@ -1857,9 +1959,11 @@ const Design = {
     const qs = d.product ? questionsOf(d.product).length : 7;
     const b = baselineCfg(d), g = groundedCfg(d);
     const baseExisting = d.product && d.persona ? completedRunsMatching(b) : [];
+    const reuse = d.product && d.persona ? reusableBaselines(d).slice(0, d.replicates) : [];
+    const newBaselines = d.replicates - reuse.length;
+    const unrecorded = baseExisting.filter((r) => !modelSig(r.model)).length;
     const grExisting = ready ? completedRunsMatching(g) : [];
-    const needBaseline = !baseExisting.length;
-    const interviews = d.replicates * (needBaseline ? 2 : 1);
+    const interviews = d.replicates + newBaselines;
     const missing = STEPS.filter((s) => !stepFilled(d, s.id)).map((s) => s.name.toLowerCase());
     const cyc = d.journey ? DATA.cycles[d.journey] : null;
     return `<section class="panel panel-pad">
@@ -1873,14 +1977,19 @@ const Design = {
         </ul>
         <div class="slot-label" style="margin-top:14px">Only the grounded interview receives</div>
         <ul><li><span class="dot grnd" style="margin-top:6px"></span><span>${cyc ? esc(cyc.short_title.replace(/^Cycle \d: /, "")) : "A journey, once chosen"}${d.detail && d.timing ? `<br/><span class="faint small">${DETAIL[d.detail].name}, ${TIMING[d.timing].name.toLowerCase()}</span>` : ""}</span></li></ul>
-        <div style="margin-top:14px">${d.product && d.persona ? (needBaseline
-          ? `<div class="note warn">No completed baseline uses this persona and memory policy. Launch adds a new matched baseline.</div>`
-          : `<div class="note ok">Matched baseline found: ${baseExisting.length} completed interview${baseExisting.length > 1 ? "s" : ""} with the same shared policy.</div>`) : ""}</div>
+        <div style="margin-top:14px">${d.product && d.persona ? (
+          !newBaselines
+            ? `<div class="note ok">${reuse.length} completed baseline${reuse.length > 1 ? "s" : ""} already use${reuse.length > 1 ? "" : "s"} this persona, memory policy and model settings, so launch reuses ${reuse.length > 1 ? "them" : "it"}. Both sides get ${d.replicates}.</div>`
+            : reuse.length
+            ? `<div class="note warn">${reuse.length} matching baseline${reuse.length > 1 ? "s" : ""} found. Launch adds ${newBaselines} more so both sides get ${d.replicates}.</div>`
+            : unrecorded
+            ? `<div class="note warn">A saved v3 baseline uses this persona and memory policy, but its model settings were not recorded. Launch generates ${newBaselines} new baseline${newBaselines > 1 ? "s" : ""} with the same settings as the grounded interviews, so both sides match.</div>`
+            : `<div class="note warn">No completed baseline uses this persona, memory policy and model settings. Launch adds ${newBaselines} matched baseline${newBaselines > 1 ? "s" : ""}, one per grounded interview.</div>`) : ""}</div>
       </section>
       <section class="panel panel-pad">
         <div class="spread" style="margin-bottom:10px"><h3>Launch</h3>
           <div class="row small"><span class="muted">Replicates</span><div class="stepper"><button data-action="rep" data-d="-1" aria-label="Fewer">−</button><span>${d.replicates}</span><button data-action="rep" data-d="1" aria-label="More">+</button></div></div></div>
-        <div class="count-row"><div class="count"><b>${interviews}</b><span>interview${interviews === 1 ? "" : "s"}</span></div><div class="count"><b>${qs}</b><span>questions each</span></div><div class="count"><b>${interviews * qs}</b><span>model calls</span></div></div>
+        <div class="count-row"><div class="count" title="${d.replicates} grounded + ${newBaselines} new baseline"><b>${interviews}</b><span>new interview${interviews === 1 ? "" : "s"}</span></div><div class="count"><b>${qs}</b><span>questions each</span></div><div class="count"><b>${interviews * qs}</b><span>model calls</span></div></div>
         ${grExisting.length ? `<div class="note ok" style="margin-top:10px">${grExisting.length} completed grounded interview${grExisting.length > 1 ? "s" : ""} already match this configuration. <button class="btn sm" data-action="open-existing" style="margin-top:6px">Open results</button></div>` : ""}
         ${!ready ? `<p class="small faint" style="margin-top:10px">Still needed: ${missing.join(", ")}.</p>` : ""}
         <button class="btn primary" style="width:100%;justify-content:center;margin-top:12px" data-action="launch" ${ready ? "" : "disabled"}>${grExisting.length ? "Run another replicate" : "Launch comparison"}</button>
@@ -1896,9 +2005,9 @@ const Design = {
       const items = studyItems(s); const reviewed = items.filter((id) => reviewsFor(id).some((x) => x.r.commonSubmittedAt)).length;
       return `<div class="run"><div class="spread"><b class="small">${esc(s.name)}</b><span class="tiny faint">${fmtTime(s.createdAt)}</span></div>
         ${runs.map((r) => `<div class="row small"><span class="dot ${r.cfg.arm === "baseline" ? "base" : "grnd"}"></span><span style="width:64px">${r.cfg.arm === "baseline" ? "Baseline" : "Grounded"}</span><div class="grow">${progBar(r)}</div>
-          ${runProgress(r).done ? `<button class="btn ghost sm" data-action="open-interview" data-run="${r.id}">View</button>` : ""}${runProgress(r).failed ? `<button class="btn sm" data-action="resume" data-run="${r.id}">Resume</button>` : RUNNING.has(r.id) ? '<span class="tiny faint">running</span>' : ""}</div>
+          ${runProgress(r).done ? `<button class="btn ghost sm" data-action="open-interview" data-run="${esc(r.id)}">View</button>` : ""}${runProgress(r).failed ? `<button class="btn sm" data-action="resume" data-run="${esc(r.id)}">Resume</button>` : RUNNING.has(r.id) ? '<span class="tiny faint">running</span>' : ""}</div>
           ${r.turns.find((t) => t.status === "failed") ? `<div class="tiny" style="color:#b8364a">${esc(r.turns.find((t) => t.status === "failed").error)}</div>` : ""}`).join("")}
-        <div class="spread tiny faint"><span>Reviewed ${reviewed} of ${items.length} generated answers</span><button class="btn ghost sm" data-action="open-study" data-study="${s.id}">Open results</button></div></div>`;
+        <div class="spread tiny faint"><span>Reviewed ${reviewed} of ${items.length} generated answers</span><button class="btn ghost sm" data-action="open-study" data-study="${esc(s.id)}">Open results</button></div></div>`;
     }).join("")}</div></section>`;
   },
 
@@ -1983,27 +2092,27 @@ function launchStudy() {
   const d = draft();
   if (!connReady()) { connModal(() => launchStudy()); return; }
   const g = groundedCfg(d), b = baselineCfg(d);
-  const baseExisting = completedRunsMatching(b);
+  const reuse = reusableBaselines(d).slice(0, d.replicates);
   const now = new Date().toISOString();
   const c = getConn();
+  const model = launchModel();
   const mk = (cfg, rep) => {
     const id = `live_${cfg.arm}_${hash(configKey(cfg) + now + rep)}`;
     const ptxt = cfg.profileText || DATA.persona_texts[cfg.persona];
     STORE.liveRuns[id] = {
       id, origin: "live", cfg, profileText: cfg.profileText, replicate: rep, createdAt: now,
       system: buildCard(ptxt, rulesFor(cfg)),
-      model: { deployment: c.deployment, apiVersion: c.apiVersion, temperature: c.temperature, maxTokens: c.maxTokens, top_p: 0.9 },
+      model: { ...model },
       versions: { persona: hash(ptxt), pack: hash(JSON.stringify(questionsOf(cfg.product).map((q) => q.question))), journey: cfg.journey ? DATA.cycles[cfg.journey].video_id : "none", loop: LOOP_VERSION },
       approvedProfile: d.profile ? JSON.parse(JSON.stringify(d.profile)) : null,
       turns: questionsOf(cfg.product).map((q, i) => ({ i, status: "pending" })),
     };
     return id;
   };
-  const groundedRuns = [], baselineRuns = baseExisting.length ? [baseExisting[0].id] : [];
-  for (let r = 1; r <= d.replicates; r++) {
-    groundedRuns.push(mk(g, r));
-    if (!baseExisting.length) baselineRuns.push(mk(b, r));
-  }
+  // Equal numbers on both sides: reuse baselines only when their recorded model settings are identical, then top up.
+  const groundedRuns = [], baselineRuns = reuse.map((r) => r.id);
+  for (let r = 1; r <= d.replicates; r++) groundedRuns.push(mk(g, r));
+  for (let r = baselineRuns.length + 1; r <= d.replicates; r++) baselineRuns.push(mk(b, r));
   const sid = "study_live_" + hash(now + d.name);
   STORE.liveStudies[sid] = { id: sid, origin: "live", name: d.name, product: d.product, decision: d.decision, groundedRuns, baselineRuns, createdAt: now };
   persist(true); App.render(); toast("Launched. Answers will appear as each turn finishes.");
@@ -2080,7 +2189,7 @@ const Interviews = {
       <div class="shelf">${runs.map((r) => {
         const cyc = r.cfg.journey ? DATA.cycles[r.cfg.journey] : null;
         const prog = runProgress(r);
-        return `<div class="block run-card ${r.cfg.arm === "baseline" ? "is-base" : "is-grnd"}${r.id === u.run ? " placed" : ""}" data-drag="ivrun" data-value="${r.id}" data-default-drop="viewer" tabindex="0">
+        return `<div class="block run-card ${r.cfg.arm === "baseline" ? "is-base" : "is-grnd"}${r.id === u.run ? " placed" : ""}" data-drag="ivrun" data-value="${esc(r.id)}" data-default-drop="viewer" tabindex="0">
           <div class="row"><span class="dot ${r.cfg.arm === "baseline" ? "base" : "grnd"}"></span><div class="b-title">${esc(runShortTitle(r))}</div></div>
           ${cyc ? sparkline(cyc, { key: "iv" + r.id, h: 28 }) : `<div class="flatline" aria-hidden="true"></div>`}
           <div class="b-meta">${runTag(r).map((t) => `<span class="chip">${esc(t)}</span>`).join("")}${r.origin === "live" ? '<span class="chip focus">Launched here</span>' : ""}</div>
@@ -2357,7 +2466,7 @@ const Evaluate = {
           <div class="spread"><h2>Continue my reviews</h2><span class="small" style="color:#b7b4d0">${items.length} responses in your queue</span></div>
           <div class="prog-big" aria-hidden="true"><i style="width:${(100 * done) / Math.max(1, items.length)}%"></i><i class="half" style="width:${(100 * half) / Math.max(1, items.length)}%"></i></div>
           ${nameMissing ? `<p style="color:#cfcce3">Add your name on the right so your scores are kept apart from other reviewers'.</p>` : next
-            ? `<div class="row"><button class="btn primary" data-action="open-item" data-id="${next.id}">${next.st === "none" ? "Start" : "Resume"} ${anonCode(next.id)}</button>
+            ? `<div class="row"><button class="btn primary" data-action="open-item" data-id="${esc(next.id)}">${next.st === "none" ? "Start" : "Resume"} ${anonCode(next.id)}</button>
                <span class="small" style="color:#b7b4d0">${next.st === "none" ? `Next in ${orderLabel}` : stageLabel(next.st)} · Interview ${interviewNumber(next.id, blind)}, Q${parseItem(next.id).i + 1}</span></div>`
             : `<p>Every response in your queue is complete. Open Compare results to see how the arms differ.</p>`}
           <p class="tiny" style="color:#8f8cae">Interviews are numbered at random for you, and condition labels, the journey, other reviewers' scores and automated notes stay hidden until the final implementation pass.</p>
@@ -2428,7 +2537,7 @@ const Evaluate = {
                 const id = itemId(iv.runId, i);
                 if (!set.has(id)) return `<td><span class="cell-glyph absent" aria-hidden="true"></span></td>`;
                 const st = stOf[id];
-                return `<td><button class="cell${next && next.id === id ? " is-next" : ""}" data-action="open-item" data-id="${id}" title="${anonCode(id)} · Interview ${iv.n}, Q${i + 1} · ${stageLabel(st)}" aria-label="${anonCode(id)}, interview ${iv.n}, question ${i + 1}, ${stageLabel(st)}">${cellGlyph(st)}</button></td>`;
+                return `<td><button class="cell${next && next.id === id ? " is-next" : ""}" data-action="open-item" data-id="${esc(id)}" title="${anonCode(id)} · Interview ${iv.n}, Q${i + 1} · ${stageLabel(st)}" aria-label="${anonCode(id)}, interview ${iv.n}, question ${i + 1}, ${stageLabel(st)}">${cellGlyph(st)}</button></td>`;
               }).join("")}
               <td class="tot"><div class="rowbar"><i style="width:${(100 * rowDone) / Math.max(1, ids.length)}%"></i></div><span class="tiny faint">${rowDone}/${ids.length}</span></td></tr>`;
           }).join("")}</tbody>
@@ -2456,7 +2565,7 @@ const Evaluate = {
             <span class="rowbar"><i style="width:${(100 * done) / Math.max(1, g.ids.length)}%"></i></span><span class="tiny faint">${done}/${g.ids.length}</span>
           </button>
           ${open ? `<div class="qg-body">${shown.sort((a, b) => interviewNumber(a, blind) - interviewNumber(b, blind)).map((id) => `
-            <button class="qg-item" data-action="open-item" data-id="${id}">${cellGlyph(stOf[id])}<b>${anonCode(id)}</b><span class="faint">Interview ${interviewNumber(id, blind)}</span><span class="grow"></span><span class="tiny faint">${stageLabel(stOf[id])}</span></button>`).join("") || `<p class="tiny faint" style="padding:6px 10px">Nothing matches this filter.</p>`}</div>` : ""}
+            <button class="qg-item" data-action="open-item" data-id="${esc(id)}">${cellGlyph(stOf[id])}<b>${anonCode(id)}</b><span class="faint">Interview ${interviewNumber(id, blind)}</span><span class="grow"></span><span class="tiny faint">${stageLabel(stOf[id])}</span></button>`).join("") || `<p class="tiny faint" style="padding:6px 10px">Nothing matches this filter.</p>`}</div>` : ""}
         </div>`;
       }).join("")}</div>`;
   },
@@ -2474,13 +2583,13 @@ const Evaluate = {
         const saved = list.filter((s) => s.origin === "saved" && g(s).cfg.persona === "full_description");
         const other = list.filter((s) => !saved.includes(s));
         const journeys = Object.values(DATA.cycles).filter((c) => saved.some((s) => g(s).cfg.journey === c.id));
-        const cell = (c, detail) => { const s = saved.find((x) => g(x).cfg.journey === c.id && g(x).cfg.detail === detail); return s ? `<button class="scope-cell" data-action="scope" data-study="${s.id}" aria-pressed="${on(s.id)}" aria-label="${esc(c.short_title)}, ${detail} cue">${on(s.id) ? ICON.check : ""}</button>` : `<span class="faint">–</span>`; };
+        const cell = (c, detail) => { const s = saved.find((x) => g(x).cfg.journey === c.id && g(x).cfg.detail === detail); return s ? `<button class="scope-cell" data-action="scope" data-study="${esc(s.id)}" aria-pressed="${on(s.id)}" aria-label="${esc(c.short_title)}, ${detail} cue">${on(s.id) ? ICON.check : ""}</button>` : `<span class="faint">–</span>`; };
         const nOn = list.filter((s) => on(s.id)).length;
         return `<div class="scope-block">
           <div class="spread"><b class="small">${esc(productOf(pid).short)}</b><span class="row"><span class="tiny faint">${nOn}/${list.length} on</span><button class="btn ghost sm" data-action="scope-all" data-p="${pid}" data-v="1">All</button><button class="btn ghost sm" data-action="scope-all" data-p="${pid}" data-v="0">None</button></span></div>
           <table class="scope-table"><thead><tr><th>Journey</th><th>Brief</th><th>Detailed</th></tr></thead>
             <tbody>${journeys.map((c) => `<tr><td>${esc(c.short_title.replace(/^Cycle \d: /, ""))}</td><td>${cell(c, "brief")}</td><td>${cell(c, "detailed")}</td></tr>`).join("")}</tbody></table>
-          ${other.length ? `<div class="row wrap" style="margin-top:8px">${other.map((s) => `<button class="chip wrapchip" data-action="scope" data-study="${s.id}" aria-pressed="${on(s.id)}">${esc(s.name)}</button>`).join("")}</div>` : ""}
+          ${other.length ? `<div class="row wrap" style="margin-top:8px">${other.map((s) => `<button class="chip wrapchip" data-action="scope" data-study="${esc(s.id)}" aria-pressed="${on(s.id)}">${esc(s.name)}</button>`).join("")}</div>` : ""}
         </div>`;
       }).join("")}
     </section>`;
@@ -2531,7 +2640,7 @@ const Evaluate = {
     const v = scoreVal(rev, c.id); const open = u.open === c.id;
     const s = (rev.scores && rev.scores[c.id]) || {};
     const autoNa = c.naFirst && it.i === 0;
-    return `<div class="crit${open ? " open" : ""}" data-drop="evidence" data-drop-id="${c.id}">
+    return `<div class="crit${open ? " open" : ""}" data-drop="evidence" data-drop-id="${esc(c.id)}">
       <button class="crit-row" data-action="open-crit" data-c="${c.id}" aria-expanded="${open}">
         <div><div class="c-name">${c.name}</div><div class="c-ask">${c.ask}</div></div>
         ${badge(v)}
@@ -2750,7 +2859,7 @@ function cmpUi() {
   STORE.ui.cmp = STORE.ui.cmp || { study: "study_C1_sub_fine_full", crit: "persona", q: null, lane: "human", obs: "all", drawer: null, tab: "persona", shelf: "subscription-management" };
   const u = STORE.ui.cmp;
   if (!studyById(u.study)) u.study = studyById("study_C1_sub_fine_full") ? "study_C1_sub_fine_full" : Object.keys(allStudies())[0];
-  if (u.q != null && !(Number.isInteger(u.q) && u.q >= 0 && u.q <= 6)) u.q = null;
+  if (!(Number.isInteger(u.q) && u.q >= 0 && u.q <= 6)) u.q = 0; // answers always visible, Q1 by default
   if (!COMMON.some((c) => c.id === u.crit)) u.crit = "persona";
   if (![...EVALUATORS.map((e) => e.id), "all"].includes(u.lane)) u.lane = "human";
   if (!PRODUCTS.some((p) => p.id === u.shelf && !p.missing)) u.shelf = studyById(u.study).product;
@@ -2824,7 +2933,7 @@ const Compare = {
         const sel = grp.options.find((o) => o.st.id === u.study) || grp.options.find((o) => o.st.id === u.pick[grp.key]) || grp.options[0];
         const st = sel.st, gr = sel.gr;
         const cyc = DATA.cycles[gr.cfg.journey]; const cov = coverage(st, "all");
-        return `<div class="block${st.id === u.study ? " placed" : ""}" data-drag="study" data-value="${st.id}" data-default-drop="grounded-slot" tabindex="0">
+        return `<div class="block${st.id === u.study ? " placed" : ""}" data-drag="study" data-value="${esc(st.id)}" data-default-drop="grounded-slot" tabindex="0">
           <div class="b-title">${cycleLabel(cyc)}</div>
           <div class="b-sub">${esc(cycleFeeling(cyc))}</div>
           ${sparkline(cyc, { key: "sh" + st.id, h: 30 })}
@@ -2833,6 +2942,7 @@ const Compare = {
           <div class="tiny faint">${PERSONAS.find((p) => p.id === gr.cfg.persona).variant} · reviewed ${cov.done}/${cov.total}</div>
         </div>`;
       }).join("")}</div>
+      ${s ? this.modelCheck(s) : ""}
       <div class="pair-slots" style="margin-top:6px">
         <div class="pair-slot base"><div class="row"><span class="dot base"></span><b>Baseline</b><span class="faint small">matched automatically</span></div>
           ${b ? `<div class="small muted">${esc(runConfigLine(b))}</div><div class="tiny faint">${PERSONAS.find((p) => p.id === b.cfg.persona).variant} · ${s.baselineRuns.length} interview${s.baselineRuns.length > 1 ? "s" : ""}</div>`
@@ -2843,6 +2953,17 @@ const Compare = {
     </section>`;
   },
 
+  /* Both arms must share model settings. Saved v3 pairs come from one notebook run, so only flag pairs that involve a launched run. */
+  modelCheck(s) {
+    const runs = [...armRuns(s, "b"), ...armRuns(s, "g")];
+    if (!runs.some((r) => r.origin === "live")) return "";
+    const sigs = new Set(runs.map((r) => modelSig(r.model) || "unrecorded"));
+    const bN = s.baselineRuns.length, gN = s.groundedRuns.length;
+    const msgs = [];
+    if (sigs.size > 1) msgs.push(`The two sides were generated with different or unrecorded model settings (${Array.from(new Set(runs.map((r) => modelLine(r.model)))).join("; ")}), so score differences may reflect the model, not the journey.`);
+    if (bN !== gN) msgs.push(`The sides have different numbers of interviews (${bN} baseline, ${gN} grounded).`);
+    return msgs.length ? `<div class="note warn" style="margin-bottom:10px"><b>This pair is not fully matched.</b> ${msgs.join(" ")} Relaunch it from Design study to get a balanced pair.</div>` : "";
+  },
   body(u, s) {
     const cov = coverage(s, u.lane); const covAll = EVALUATORS.map((e) => ({ e, c: coverage(s, e.id) }));
     const partial = cov.done < cov.total;
@@ -2865,7 +2986,7 @@ const Compare = {
         </div>
       </section>
       ${this.critDetail(u, s)}
-      ${u.q != null ? this.questionPanel(u, s) : ""}
+      ${this.questionPanel(u, s)}
       ${this.implSection(u, s)}`;
   },
   tile(s, c, u) {
@@ -2883,7 +3004,9 @@ const Compare = {
     const dist = (arm) => { const d = [0, 0, 0, 0]; for (let i = 0; i < 7; i++) { const v = armScore(s, arm, i, c.id, u.lane); if (v != null) d[Math.round(v)]++; } return d; };
     const db = dist("b"), dg = dist("g"); const mx = Math.max(1, ...db, ...dg);
     return `<section class="panel panel-pad" style="margin-bottom:16px">
-      <div class="spread" style="margin-bottom:4px"><div><h2>${c.name}</h2><p class="small muted">${c.ask} Select a question to read both answers.</p></div></div>
+      <div class="spread" style="margin-bottom:10px"><div><h2>${c.name}</h2><p class="small muted">${c.ask} Select a question to read both answers.</p></div></div>
+      ${this.qStrip(u, s, c)}
+      ${critSummary(s, c.id, u.lane).scored === 0 ? `<div class="note small" style="margin:10px 0 0">No ${u.lane === "all" ? "" : (EVALUATORS.find((e) => e.id === u.lane) || {}).name + " "}scores for this criterion yet, so the chart below is empty. The answers are still shown further down: pick a question above to read both side by side. Scores appear once responses are reviewed in Evaluate or by the LLM judge.</div>` : ""}
       ${twinRail({ mode: "scores", selected: u.q, action: "cmp-q", scoreAt: (i, arm) => armScore(s, arm, i, c.id, u.lane), aria: `${c.name} scores by question` })}
       <div class="slot-pair" style="margin-top:8px">
         ${[["b", "Baseline", db, "var(--base)"], ["g", "Grounded", dg, "var(--grnd)"]].map(([k, l, d, col]) => `<div>
@@ -2892,6 +3015,17 @@ const Compare = {
             <span class="tiny faint" style="grid-row:2">Score</span>${[0, 1, 2, 3].map((v) => `<span class="tiny" style="grid-row:2;text-align:center">${v}</span>`).join("")}</div></div>`).join("")}
       </div>
     </section>`;
+  },
+  /* One button per question: always clickable, shows the screen tag and the score difference when there is one. */
+  qStrip(u, s, c) {
+    const qs = questionsOf(s.product);
+    return `<div class="qstrip" role="group" aria-label="Questions">${qs.map((q, i) => {
+      const b = armScore(s, "b", i, c.id, u.lane), g = armScore(s, "g", i, c.id, u.lane);
+      const d = b != null && g != null ? g - b : null;
+      const delta = d == null ? `<span class="qs-d faint">not scored</span>` : d === 0 ? `<span class="qs-d faint">same</span>` : `<span class="qs-d ${d > 0 ? "up" : "down"}">${d > 0 ? "+" : ""}${fmtNum(d)}</span>`;
+      return `<button class="qs-btn" data-action="cmp-q" data-i="${i}" aria-pressed="${u.q === i}" title="${esc(q.question)}">
+        <span class="qs-top"><b>Q${i + 1}</b>${isScreen(q) ? '<span class="qs-screen">screen</span>' : ""}</span>${delta}</button>`;
+    }).join("")}</div>`;
   },
   questionPanel(u, s) {
     const i = u.q; const b = armRuns(s, "b")[0], g = armRuns(s, "g")[0];
@@ -2902,7 +3036,7 @@ const Compare = {
     const auto = g && g.origin === "saved" && DATA.insights[g.cfg.journey] && DATA.insights[g.cfg.journey][s.product] ? DATA.insights[g.cfg.journey][s.product][i] : null;
     return `<section class="panel panel-pad" style="margin-bottom:16px" id="qpanel">
       <div class="spread" style="margin-bottom:10px"><div class="row"><h2>Question ${i + 1}</h2><span class="chip">${isScreen(q) ? "With screen" : "Topic-only"}</span></div>
-        <div class="row"><button class="btn sm" data-action="cmp-q" data-i="${Math.max(0, i - 1)}" ${i === 0 ? "disabled" : ""}>Previous</button><button class="btn sm" data-action="cmp-q" data-i="${Math.min(6, i + 1)}" ${i === 6 ? "disabled" : ""}>Next</button><button class="btn ghost sm" data-action="cmp-q-close">Close</button></div></div>
+        <div class="row"><button class="btn sm" data-action="cmp-q" data-i="${Math.max(0, i - 1)}" ${i === 0 ? "disabled" : ""}>Previous</button><button class="btn sm" data-action="cmp-q" data-i="${Math.min(6, i + 1)}" ${i === 6 ? "disabled" : ""}>Next</button></div></div>
       <div class="row" style="align-items:flex-start;gap:16px;margin-bottom:16px"><p class="grow" style="font-size:15px">${esc(q.question)}</p>
         ${isScreen(q) ? `<img class="thumb" style="width:120px;height:80px" src="${q.screenshot_data_uri}" alt="Screen" data-action="zoom" data-pid="${s.product}" data-i="${i}"/>` : ""}</div>
       <div class="qcompare">${this.replyCard(s, b, i, "b", u, obs)}${this.replyCard(s, g, i, "g", u, obs)}</div>
@@ -2927,7 +3061,7 @@ const Compare = {
     obs.forEach((o) => (isB ? o.base : o.grnd).forEach((q) => quotes.push(q)));
     const notes = []; revs.forEach((x) => Object.entries(x.r.scores || {}).forEach(([cid, sc]) => sc.note && COMMON_IDX[cid] && notes.push({ who: x.ek.replace(/^human:/, ""), c: cid, n: sc.note })));
     return `<div class="reply-card ${isB ? "base" : "grnd"}">
-      <div class="rc-head"><div class="row"><span class="dot ${isB ? "base" : "grnd"}"></span><b>${isB ? "Baseline" : "Grounded"}</b>${run.cfg.arm === "grounded" ? `<span class="small faint">${esc(moodOf(t.state_before))} cue</span>` : ""}</div><span class="row"><span class="tiny faint">${anonCode(id)} · ${t.words || wordsOf(t.reply)} words</span><button class="btn ghost sm" data-action="open-interview" data-run="${run.id}" data-i="${i}">Prompt blocks</button></span></div>
+      <div class="rc-head"><div class="row"><span class="dot ${isB ? "base" : "grnd"}"></span><b>${isB ? "Baseline" : "Grounded"}</b>${run.cfg.arm === "grounded" ? `<span class="small faint">${esc(moodOf(t.state_before))} cue</span>` : ""}</div><span class="row"><span class="tiny faint">${anonCode(id)} · ${t.words || wordsOf(t.reply)} words</span><button class="btn ghost sm" data-action="open-interview" data-run="${esc(run.id)}" data-i="${i}">Prompt blocks</button></span></div>
       <div class="rc-body"><div class="read reply-text" data-side="${isB ? "base" : "grnd"}">${t.status === "done" ? highlightText(t.reply, quotes) : `<span class="faint">Not generated yet (${t.status}).</span>`}</div></div>
       <div class="rc-scores">
         ${COMMON.map((c) => { const v = laneScore(id, u.lane, c.id); return `<div class="score-line"><span>${c.name}</span><span class="row"><span class="pips ${isB ? "base" : "grnd"}">${[1, 2, 3].map((k) => `<i class="${v != null && v >= k ? "on" : ""}"></i>`).join("")}</span><b style="width:22px;text-align:right">${v == null ? (revs.some((x) => scoreVal(x.r, c.id) === "na") ? "N/A" : "–") : fmtNum(v)}</b></span></div>`; }).join("")}
@@ -2937,10 +3071,10 @@ const Compare = {
   },
   obsCard(o) {
     const label = { both: "Appears in both", baseline: "Baseline only", config: "Selected configuration only", none: "No material difference" }[o.kind];
-    return `<div class="obs" data-drop="quote" data-drop-id="${o.id}">
+    return `<div class="obs" data-drop="quote" data-drop-id="${esc(o.id)}">
       <div class="spread"><span class="chip ${o.kind === "config" ? "grnd" : o.kind === "baseline" ? "base" : o.kind === "both" ? "focus" : ""}">${label}</span>
-        <div class="row"><span class="tiny faint">${esc(o.author || "")}</span><button class="btn ghost sm" data-action="obs-del" data-id="${o.id}" aria-label="Delete observation">${ICON.x}</button></div></div>
-      <textarea class="note-in" rows="1" data-bind="obs-title" data-id="${o.id}" placeholder="${o.kind === "none" ? "Why there is no meaningful difference" : "What the team learns from this"}">${esc(o.title || "")}</textarea>
+        <div class="row"><span class="tiny faint">${esc(o.author || "")}</span><button class="btn ghost sm" data-action="obs-del" data-id="${esc(o.id)}" aria-label="Delete observation">${ICON.x}</button></div></div>
+      <textarea class="note-in" rows="1" data-bind="obs-title" data-id="${esc(o.id)}" placeholder="${o.kind === "none" ? "Why there is no meaningful difference" : "What the team learns from this"}">${esc(o.title || "")}</textarea>
       ${o.base.map((q) => `<div class="q base">“${esc(q)}”</div>`).join("")}${o.grnd.map((q) => `<div class="q grnd">“${esc(q)}”</div>`).join("")}
     </div>`;
   },
@@ -3024,7 +3158,7 @@ const Compare = {
       (q.side === "base" ? o.base : o.grnd).push(q.text);
       o.kind = o.base.length && o.grnd.length ? "both" : o.base.length ? "baseline" : "config";
       hideSelChip(); window.getSelection().removeAllRanges(); save();
-      setTimeout(() => { const t = $(`[data-bind="obs-title"][data-id="${o.id}"]`); if (t && !o.title) t.focus(); }, 0);
+      setTimeout(() => { const t = $(`[data-bind="obs-title"][data-id="${esc(o.id)}"]`); if (t && !o.title) t.focus(); }, 0);
     });
     App.on("shelf", (el) => { cmpUi().shelf = el.dataset.p; save(); });
     App.on("cmp-pick", (el) => {
@@ -3036,8 +3170,11 @@ const Compare = {
     });
     App.on("crit", (el) => { cmpUi().crit = el.dataset.c; save(); });
     App.on("lane-cmp", (el) => { cmpUi().lane = el.dataset.lane; save(); });
-    App.on("cmp-q", (el) => { cmpUi().q = Number(el.dataset.i); save(); setTimeout(() => { const p = $("#qpanel"); if (p) p.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); }, 0); });
-    App.on("cmp-q-close", () => { cmpUi().q = null; save(); });
+    App.on("cmp-q", (el) => {
+      cmpUi().q = Number(el.dataset.i); save();
+      // From the chart or strip, bring the answers into view; Previous/Next inside the panel stay put.
+      if (!el.closest("#qpanel")) setTimeout(() => { const p = $("#qpanel"); if (p) p.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); }, 0);
+    });
     App.on("obs-filter", (el) => { cmpUi().obs = el.dataset.k; save(); });
     App.on("obs-none", () => { const u = cmpUi(); STORE.observations.push({ id: "obs_" + hash(String(Date.now())), study: u.study, q: u.q, title: "", base: [], grnd: [], kind: "none", author: STORE.reviewer.name || "Reviewer", at: new Date().toISOString() }); save(); });
     App.on("obs-del", (el) => { STORE.observations = STORE.observations.filter((o) => o.id !== el.dataset.id); save(); });

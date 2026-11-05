@@ -5,7 +5,7 @@ function cmpUi() {
   STORE.ui.cmp = STORE.ui.cmp || { study: "study_C1_sub_fine_full", crit: "persona", q: null, lane: "human", obs: "all", drawer: null, tab: "persona", shelf: "subscription-management" };
   const u = STORE.ui.cmp;
   if (!studyById(u.study)) u.study = studyById("study_C1_sub_fine_full") ? "study_C1_sub_fine_full" : Object.keys(allStudies())[0];
-  if (u.q != null && !(Number.isInteger(u.q) && u.q >= 0 && u.q <= 6)) u.q = null;
+  if (!(Number.isInteger(u.q) && u.q >= 0 && u.q <= 6)) u.q = 0; // answers always visible, Q1 by default
   if (!COMMON.some((c) => c.id === u.crit)) u.crit = "persona";
   if (![...EVALUATORS.map((e) => e.id), "all"].includes(u.lane)) u.lane = "human";
   if (!PRODUCTS.some((p) => p.id === u.shelf && !p.missing)) u.shelf = studyById(u.study).product;
@@ -79,7 +79,7 @@ const Compare = {
         const sel = grp.options.find((o) => o.st.id === u.study) || grp.options.find((o) => o.st.id === u.pick[grp.key]) || grp.options[0];
         const st = sel.st, gr = sel.gr;
         const cyc = DATA.cycles[gr.cfg.journey]; const cov = coverage(st, "all");
-        return `<div class="block${st.id === u.study ? " placed" : ""}" data-drag="study" data-value="${st.id}" data-default-drop="grounded-slot" tabindex="0">
+        return `<div class="block${st.id === u.study ? " placed" : ""}" data-drag="study" data-value="${esc(st.id)}" data-default-drop="grounded-slot" tabindex="0">
           <div class="b-title">${cycleLabel(cyc)}</div>
           <div class="b-sub">${esc(cycleFeeling(cyc))}</div>
           ${sparkline(cyc, { key: "sh" + st.id, h: 30 })}
@@ -88,6 +88,7 @@ const Compare = {
           <div class="tiny faint">${PERSONAS.find((p) => p.id === gr.cfg.persona).variant} · reviewed ${cov.done}/${cov.total}</div>
         </div>`;
       }).join("")}</div>
+      ${s ? this.modelCheck(s) : ""}
       <div class="pair-slots" style="margin-top:6px">
         <div class="pair-slot base"><div class="row"><span class="dot base"></span><b>Baseline</b><span class="faint small">matched automatically</span></div>
           ${b ? `<div class="small muted">${esc(runConfigLine(b))}</div><div class="tiny faint">${PERSONAS.find((p) => p.id === b.cfg.persona).variant} · ${s.baselineRuns.length} interview${s.baselineRuns.length > 1 ? "s" : ""}</div>`
@@ -98,6 +99,17 @@ const Compare = {
     </section>`;
   },
 
+  /* Both arms must share model settings. Saved v3 pairs come from one notebook run, so only flag pairs that involve a launched run. */
+  modelCheck(s) {
+    const runs = [...armRuns(s, "b"), ...armRuns(s, "g")];
+    if (!runs.some((r) => r.origin === "live")) return "";
+    const sigs = new Set(runs.map((r) => modelSig(r.model) || "unrecorded"));
+    const bN = s.baselineRuns.length, gN = s.groundedRuns.length;
+    const msgs = [];
+    if (sigs.size > 1) msgs.push(`The two sides were generated with different or unrecorded model settings (${Array.from(new Set(runs.map((r) => modelLine(r.model)))).join("; ")}), so score differences may reflect the model, not the journey.`);
+    if (bN !== gN) msgs.push(`The sides have different numbers of interviews (${bN} baseline, ${gN} grounded).`);
+    return msgs.length ? `<div class="note warn" style="margin-bottom:10px"><b>This pair is not fully matched.</b> ${msgs.join(" ")} Relaunch it from Design study to get a balanced pair.</div>` : "";
+  },
   body(u, s) {
     const cov = coverage(s, u.lane); const covAll = EVALUATORS.map((e) => ({ e, c: coverage(s, e.id) }));
     const partial = cov.done < cov.total;
@@ -120,7 +132,7 @@ const Compare = {
         </div>
       </section>
       ${this.critDetail(u, s)}
-      ${u.q != null ? this.questionPanel(u, s) : ""}
+      ${this.questionPanel(u, s)}
       ${this.implSection(u, s)}`;
   },
   tile(s, c, u) {
@@ -138,7 +150,9 @@ const Compare = {
     const dist = (arm) => { const d = [0, 0, 0, 0]; for (let i = 0; i < 7; i++) { const v = armScore(s, arm, i, c.id, u.lane); if (v != null) d[Math.round(v)]++; } return d; };
     const db = dist("b"), dg = dist("g"); const mx = Math.max(1, ...db, ...dg);
     return `<section class="panel panel-pad" style="margin-bottom:16px">
-      <div class="spread" style="margin-bottom:4px"><div><h2>${c.name}</h2><p class="small muted">${c.ask} Select a question to read both answers.</p></div></div>
+      <div class="spread" style="margin-bottom:10px"><div><h2>${c.name}</h2><p class="small muted">${c.ask} Select a question to read both answers.</p></div></div>
+      ${this.qStrip(u, s, c)}
+      ${critSummary(s, c.id, u.lane).scored === 0 ? `<div class="note small" style="margin:10px 0 0">No ${u.lane === "all" ? "" : (EVALUATORS.find((e) => e.id === u.lane) || {}).name + " "}scores for this criterion yet, so the chart below is empty. The answers are still shown further down: pick a question above to read both side by side. Scores appear once responses are reviewed in Evaluate or by the LLM judge.</div>` : ""}
       ${twinRail({ mode: "scores", selected: u.q, action: "cmp-q", scoreAt: (i, arm) => armScore(s, arm, i, c.id, u.lane), aria: `${c.name} scores by question` })}
       <div class="slot-pair" style="margin-top:8px">
         ${[["b", "Baseline", db, "var(--base)"], ["g", "Grounded", dg, "var(--grnd)"]].map(([k, l, d, col]) => `<div>
@@ -147,6 +161,17 @@ const Compare = {
             <span class="tiny faint" style="grid-row:2">Score</span>${[0, 1, 2, 3].map((v) => `<span class="tiny" style="grid-row:2;text-align:center">${v}</span>`).join("")}</div></div>`).join("")}
       </div>
     </section>`;
+  },
+  /* One button per question: always clickable, shows the screen tag and the score difference when there is one. */
+  qStrip(u, s, c) {
+    const qs = questionsOf(s.product);
+    return `<div class="qstrip" role="group" aria-label="Questions">${qs.map((q, i) => {
+      const b = armScore(s, "b", i, c.id, u.lane), g = armScore(s, "g", i, c.id, u.lane);
+      const d = b != null && g != null ? g - b : null;
+      const delta = d == null ? `<span class="qs-d faint">not scored</span>` : d === 0 ? `<span class="qs-d faint">same</span>` : `<span class="qs-d ${d > 0 ? "up" : "down"}">${d > 0 ? "+" : ""}${fmtNum(d)}</span>`;
+      return `<button class="qs-btn" data-action="cmp-q" data-i="${i}" aria-pressed="${u.q === i}" title="${esc(q.question)}">
+        <span class="qs-top"><b>Q${i + 1}</b>${isScreen(q) ? '<span class="qs-screen">screen</span>' : ""}</span>${delta}</button>`;
+    }).join("")}</div>`;
   },
   questionPanel(u, s) {
     const i = u.q; const b = armRuns(s, "b")[0], g = armRuns(s, "g")[0];
@@ -157,7 +182,7 @@ const Compare = {
     const auto = g && g.origin === "saved" && DATA.insights[g.cfg.journey] && DATA.insights[g.cfg.journey][s.product] ? DATA.insights[g.cfg.journey][s.product][i] : null;
     return `<section class="panel panel-pad" style="margin-bottom:16px" id="qpanel">
       <div class="spread" style="margin-bottom:10px"><div class="row"><h2>Question ${i + 1}</h2><span class="chip">${isScreen(q) ? "With screen" : "Topic-only"}</span></div>
-        <div class="row"><button class="btn sm" data-action="cmp-q" data-i="${Math.max(0, i - 1)}" ${i === 0 ? "disabled" : ""}>Previous</button><button class="btn sm" data-action="cmp-q" data-i="${Math.min(6, i + 1)}" ${i === 6 ? "disabled" : ""}>Next</button><button class="btn ghost sm" data-action="cmp-q-close">Close</button></div></div>
+        <div class="row"><button class="btn sm" data-action="cmp-q" data-i="${Math.max(0, i - 1)}" ${i === 0 ? "disabled" : ""}>Previous</button><button class="btn sm" data-action="cmp-q" data-i="${Math.min(6, i + 1)}" ${i === 6 ? "disabled" : ""}>Next</button></div></div>
       <div class="row" style="align-items:flex-start;gap:16px;margin-bottom:16px"><p class="grow" style="font-size:15px">${esc(q.question)}</p>
         ${isScreen(q) ? `<img class="thumb" style="width:120px;height:80px" src="${q.screenshot_data_uri}" alt="Screen" data-action="zoom" data-pid="${s.product}" data-i="${i}"/>` : ""}</div>
       <div class="qcompare">${this.replyCard(s, b, i, "b", u, obs)}${this.replyCard(s, g, i, "g", u, obs)}</div>
@@ -182,7 +207,7 @@ const Compare = {
     obs.forEach((o) => (isB ? o.base : o.grnd).forEach((q) => quotes.push(q)));
     const notes = []; revs.forEach((x) => Object.entries(x.r.scores || {}).forEach(([cid, sc]) => sc.note && COMMON_IDX[cid] && notes.push({ who: x.ek.replace(/^human:/, ""), c: cid, n: sc.note })));
     return `<div class="reply-card ${isB ? "base" : "grnd"}">
-      <div class="rc-head"><div class="row"><span class="dot ${isB ? "base" : "grnd"}"></span><b>${isB ? "Baseline" : "Grounded"}</b>${run.cfg.arm === "grounded" ? `<span class="small faint">${esc(moodOf(t.state_before))} cue</span>` : ""}</div><span class="row"><span class="tiny faint">${anonCode(id)} · ${t.words || wordsOf(t.reply)} words</span><button class="btn ghost sm" data-action="open-interview" data-run="${run.id}" data-i="${i}">Prompt blocks</button></span></div>
+      <div class="rc-head"><div class="row"><span class="dot ${isB ? "base" : "grnd"}"></span><b>${isB ? "Baseline" : "Grounded"}</b>${run.cfg.arm === "grounded" ? `<span class="small faint">${esc(moodOf(t.state_before))} cue</span>` : ""}</div><span class="row"><span class="tiny faint">${anonCode(id)} · ${t.words || wordsOf(t.reply)} words</span><button class="btn ghost sm" data-action="open-interview" data-run="${esc(run.id)}" data-i="${i}">Prompt blocks</button></span></div>
       <div class="rc-body"><div class="read reply-text" data-side="${isB ? "base" : "grnd"}">${t.status === "done" ? highlightText(t.reply, quotes) : `<span class="faint">Not generated yet (${t.status}).</span>`}</div></div>
       <div class="rc-scores">
         ${COMMON.map((c) => { const v = laneScore(id, u.lane, c.id); return `<div class="score-line"><span>${c.name}</span><span class="row"><span class="pips ${isB ? "base" : "grnd"}">${[1, 2, 3].map((k) => `<i class="${v != null && v >= k ? "on" : ""}"></i>`).join("")}</span><b style="width:22px;text-align:right">${v == null ? (revs.some((x) => scoreVal(x.r, c.id) === "na") ? "N/A" : "–") : fmtNum(v)}</b></span></div>`; }).join("")}
@@ -192,10 +217,10 @@ const Compare = {
   },
   obsCard(o) {
     const label = { both: "Appears in both", baseline: "Baseline only", config: "Selected configuration only", none: "No material difference" }[o.kind];
-    return `<div class="obs" data-drop="quote" data-drop-id="${o.id}">
+    return `<div class="obs" data-drop="quote" data-drop-id="${esc(o.id)}">
       <div class="spread"><span class="chip ${o.kind === "config" ? "grnd" : o.kind === "baseline" ? "base" : o.kind === "both" ? "focus" : ""}">${label}</span>
-        <div class="row"><span class="tiny faint">${esc(o.author || "")}</span><button class="btn ghost sm" data-action="obs-del" data-id="${o.id}" aria-label="Delete observation">${ICON.x}</button></div></div>
-      <textarea class="note-in" rows="1" data-bind="obs-title" data-id="${o.id}" placeholder="${o.kind === "none" ? "Why there is no meaningful difference" : "What the team learns from this"}">${esc(o.title || "")}</textarea>
+        <div class="row"><span class="tiny faint">${esc(o.author || "")}</span><button class="btn ghost sm" data-action="obs-del" data-id="${esc(o.id)}" aria-label="Delete observation">${ICON.x}</button></div></div>
+      <textarea class="note-in" rows="1" data-bind="obs-title" data-id="${esc(o.id)}" placeholder="${o.kind === "none" ? "Why there is no meaningful difference" : "What the team learns from this"}">${esc(o.title || "")}</textarea>
       ${o.base.map((q) => `<div class="q base">“${esc(q)}”</div>`).join("")}${o.grnd.map((q) => `<div class="q grnd">“${esc(q)}”</div>`).join("")}
     </div>`;
   },
@@ -279,7 +304,7 @@ const Compare = {
       (q.side === "base" ? o.base : o.grnd).push(q.text);
       o.kind = o.base.length && o.grnd.length ? "both" : o.base.length ? "baseline" : "config";
       hideSelChip(); window.getSelection().removeAllRanges(); save();
-      setTimeout(() => { const t = $(`[data-bind="obs-title"][data-id="${o.id}"]`); if (t && !o.title) t.focus(); }, 0);
+      setTimeout(() => { const t = $(`[data-bind="obs-title"][data-id="${esc(o.id)}"]`); if (t && !o.title) t.focus(); }, 0);
     });
     App.on("shelf", (el) => { cmpUi().shelf = el.dataset.p; save(); });
     App.on("cmp-pick", (el) => {
@@ -291,8 +316,11 @@ const Compare = {
     });
     App.on("crit", (el) => { cmpUi().crit = el.dataset.c; save(); });
     App.on("lane-cmp", (el) => { cmpUi().lane = el.dataset.lane; save(); });
-    App.on("cmp-q", (el) => { cmpUi().q = Number(el.dataset.i); save(); setTimeout(() => { const p = $("#qpanel"); if (p) p.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); }, 0); });
-    App.on("cmp-q-close", () => { cmpUi().q = null; save(); });
+    App.on("cmp-q", (el) => {
+      cmpUi().q = Number(el.dataset.i); save();
+      // From the chart or strip, bring the answers into view; Previous/Next inside the panel stay put.
+      if (!el.closest("#qpanel")) setTimeout(() => { const p = $("#qpanel"); if (p) p.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); }, 0);
+    });
     App.on("obs-filter", (el) => { cmpUi().obs = el.dataset.k; save(); });
     App.on("obs-none", () => { const u = cmpUi(); STORE.observations.push({ id: "obs_" + hash(String(Date.now())), study: u.study, q: u.q, title: "", base: [], grnd: [], kind: "none", author: STORE.reviewer.name || "Reviewer", at: new Date().toISOString() }); save(); });
     App.on("obs-del", (el) => { STORE.observations = STORE.observations.filter((o) => o.id !== el.dataset.id); save(); });

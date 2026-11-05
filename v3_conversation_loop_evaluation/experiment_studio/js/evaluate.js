@@ -78,7 +78,7 @@ const Evaluate = {
           <div class="spread"><h2>Continue my reviews</h2><span class="small" style="color:#b7b4d0">${items.length} responses in your queue</span></div>
           <div class="prog-big" aria-hidden="true"><i style="width:${(100 * done) / Math.max(1, items.length)}%"></i><i class="half" style="width:${(100 * half) / Math.max(1, items.length)}%"></i></div>
           ${nameMissing ? `<p style="color:#cfcce3">Add your name on the right so your scores are kept apart from other reviewers'.</p>` : next
-            ? `<div class="row"><button class="btn primary" data-action="open-item" data-id="${next.id}">${next.st === "none" ? "Start" : "Resume"} ${anonCode(next.id)}</button>
+            ? `<div class="row"><button class="btn primary" data-action="open-item" data-id="${esc(next.id)}">${next.st === "none" ? "Start" : "Resume"} ${anonCode(next.id)}</button>
                <span class="small" style="color:#b7b4d0">${next.st === "none" ? `Next in ${orderLabel}` : stageLabel(next.st)} · Interview ${interviewNumber(next.id, blind)}, Q${parseItem(next.id).i + 1}</span></div>`
             : `<p>Every response in your queue is complete. Open Compare results to see how the arms differ.</p>`}
           <p class="tiny" style="color:#8f8cae">Interviews are numbered at random for you, and condition labels, the journey, other reviewers' scores and automated notes stay hidden until the final implementation pass.</p>
@@ -149,7 +149,7 @@ const Evaluate = {
                 const id = itemId(iv.runId, i);
                 if (!set.has(id)) return `<td><span class="cell-glyph absent" aria-hidden="true"></span></td>`;
                 const st = stOf[id];
-                return `<td><button class="cell${next && next.id === id ? " is-next" : ""}" data-action="open-item" data-id="${id}" title="${anonCode(id)} · Interview ${iv.n}, Q${i + 1} · ${stageLabel(st)}" aria-label="${anonCode(id)}, interview ${iv.n}, question ${i + 1}, ${stageLabel(st)}">${cellGlyph(st)}</button></td>`;
+                return `<td><button class="cell${next && next.id === id ? " is-next" : ""}" data-action="open-item" data-id="${esc(id)}" title="${anonCode(id)} · Interview ${iv.n}, Q${i + 1} · ${stageLabel(st)}" aria-label="${anonCode(id)}, interview ${iv.n}, question ${i + 1}, ${stageLabel(st)}">${cellGlyph(st)}</button></td>`;
               }).join("")}
               <td class="tot"><div class="rowbar"><i style="width:${(100 * rowDone) / Math.max(1, ids.length)}%"></i></div><span class="tiny faint">${rowDone}/${ids.length}</span></td></tr>`;
           }).join("")}</tbody>
@@ -177,7 +177,7 @@ const Evaluate = {
             <span class="rowbar"><i style="width:${(100 * done) / Math.max(1, g.ids.length)}%"></i></span><span class="tiny faint">${done}/${g.ids.length}</span>
           </button>
           ${open ? `<div class="qg-body">${shown.sort((a, b) => interviewNumber(a, blind) - interviewNumber(b, blind)).map((id) => `
-            <button class="qg-item" data-action="open-item" data-id="${id}">${cellGlyph(stOf[id])}<b>${anonCode(id)}</b><span class="faint">Interview ${interviewNumber(id, blind)}</span><span class="grow"></span><span class="tiny faint">${stageLabel(stOf[id])}</span></button>`).join("") || `<p class="tiny faint" style="padding:6px 10px">Nothing matches this filter.</p>`}</div>` : ""}
+            <button class="qg-item" data-action="open-item" data-id="${esc(id)}">${cellGlyph(stOf[id])}<b>${anonCode(id)}</b><span class="faint">Interview ${interviewNumber(id, blind)}</span><span class="grow"></span><span class="tiny faint">${stageLabel(stOf[id])}</span></button>`).join("") || `<p class="tiny faint" style="padding:6px 10px">Nothing matches this filter.</p>`}</div>` : ""}
         </div>`;
       }).join("")}</div>`;
   },
@@ -195,13 +195,13 @@ const Evaluate = {
         const saved = list.filter((s) => s.origin === "saved" && g(s).cfg.persona === "full_description");
         const other = list.filter((s) => !saved.includes(s));
         const journeys = Object.values(DATA.cycles).filter((c) => saved.some((s) => g(s).cfg.journey === c.id));
-        const cell = (c, detail) => { const s = saved.find((x) => g(x).cfg.journey === c.id && g(x).cfg.detail === detail); return s ? `<button class="scope-cell" data-action="scope" data-study="${s.id}" aria-pressed="${on(s.id)}" aria-label="${esc(c.short_title)}, ${detail} cue">${on(s.id) ? ICON.check : ""}</button>` : `<span class="faint">–</span>`; };
+        const cell = (c, detail) => { const s = saved.find((x) => g(x).cfg.journey === c.id && g(x).cfg.detail === detail); return s ? `<button class="scope-cell" data-action="scope" data-study="${esc(s.id)}" aria-pressed="${on(s.id)}" aria-label="${esc(c.short_title)}, ${detail} cue">${on(s.id) ? ICON.check : ""}</button>` : `<span class="faint">–</span>`; };
         const nOn = list.filter((s) => on(s.id)).length;
         return `<div class="scope-block">
           <div class="spread"><b class="small">${esc(productOf(pid).short)}</b><span class="row"><span class="tiny faint">${nOn}/${list.length} on</span><button class="btn ghost sm" data-action="scope-all" data-p="${pid}" data-v="1">All</button><button class="btn ghost sm" data-action="scope-all" data-p="${pid}" data-v="0">None</button></span></div>
           <table class="scope-table"><thead><tr><th>Journey</th><th>Brief</th><th>Detailed</th></tr></thead>
             <tbody>${journeys.map((c) => `<tr><td>${esc(c.short_title.replace(/^Cycle \d: /, ""))}</td><td>${cell(c, "brief")}</td><td>${cell(c, "detailed")}</td></tr>`).join("")}</tbody></table>
-          ${other.length ? `<div class="row wrap" style="margin-top:8px">${other.map((s) => `<button class="chip wrapchip" data-action="scope" data-study="${s.id}" aria-pressed="${on(s.id)}">${esc(s.name)}</button>`).join("")}</div>` : ""}
+          ${other.length ? `<div class="row wrap" style="margin-top:8px">${other.map((s) => `<button class="chip wrapchip" data-action="scope" data-study="${esc(s.id)}" aria-pressed="${on(s.id)}">${esc(s.name)}</button>`).join("")}</div>` : ""}
         </div>`;
       }).join("")}
     </section>`;
@@ -252,7 +252,7 @@ const Evaluate = {
     const v = scoreVal(rev, c.id); const open = u.open === c.id;
     const s = (rev.scores && rev.scores[c.id]) || {};
     const autoNa = c.naFirst && it.i === 0;
-    return `<div class="crit${open ? " open" : ""}" data-drop="evidence" data-drop-id="${c.id}">
+    return `<div class="crit${open ? " open" : ""}" data-drop="evidence" data-drop-id="${esc(c.id)}">
       <button class="crit-row" data-action="open-crit" data-c="${c.id}" aria-expanded="${open}">
         <div><div class="c-name">${c.name}</div><div class="c-ask">${c.ask}</div></div>
         ${badge(v)}

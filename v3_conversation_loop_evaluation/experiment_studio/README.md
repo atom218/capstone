@@ -31,10 +31,12 @@ and has four workspaces:
   are locked for audit before the journey cue is revealed for the
   implementation checks. An LLM judge can score the same queue in its own lane.
 - **Compare results.** Drag a grounded configuration onto the right slot and
-  its matched baseline fills the left. Select a criterion to see higher, same
-  and lower counts and score distributions, then select a question to read both
-  verbatim answers side by side. That is two clicks from a criterion to the
-  evidence. Observations can be filtered by "Appears in both", "Baseline
+  its matched baseline fills the left. Both verbatim answers to Q1 show
+  straight away, baseline on the left and grounded on the right. Pick another
+  question from the Q1 to Q7 row or from the chart. Select a criterion to see
+  how many questions scored higher, the same or lower, and the score
+  distributions. The chart stays empty until responses are scored in Evaluate
+  or by the LLM judge, but the answers never depend on scores. Observations can be filtered by "Appears in both", "Baseline
   only", "Selected configuration only" and "No material difference". The
   evaluator table shows missing judgments, disagreements and scale
   differences. Journey implementation has its own section at the end, and
@@ -253,6 +255,25 @@ the team Drive notebook the original runs used. It is kept in memory only.
 Reviews, observations and launched runs are saved in the browser's local
 storage as you work. The **Data** menu exports everything as JSON (which can
 be imported elsewhere) or exports scores as CSV, for example into `results/`.
+
+## How comparisons stay matched
+
+A launch always gives both sides the same number of interviews. An existing
+baseline is reused only when it shares the persona, memory policy and the
+exact recorded model settings (deployment, temperature, token limit). The
+saved v3 runs never recorded their model settings, so new launches generate
+their own baselines rather than pairing with them. Compare results warns
+about any pair whose two sides used different or unrecorded settings, or
+have different numbers of interviews.
+
+## Security notes
+
+- The local helper only accepts model calls from the Experiment Studio page
+  it served. Each run of `run_studio.py` creates a fresh session token that
+  the page must send back, and requests from other websites or unexpected
+  hosts are refused. This keeps other sites you visit from using your key.
+- Imported JSON files are checked field by field. Anything malformed or
+  unrecognized is skipped and counted in the import message.
 
 ## Known gaps
 
