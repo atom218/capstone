@@ -61,7 +61,7 @@ const Interviews = {
       <div class="shelf">${runs.map((r) => {
         const cyc = r.cfg.journey ? DATA.cycles[r.cfg.journey] : null;
         const prog = runProgress(r);
-        return `<div class="block run-card ${r.cfg.arm === "baseline" ? "is-base" : "is-grnd"}${r.id === u.run ? " placed" : ""}" data-drag="ivrun" data-value="${r.id}" data-default-drop="viewer" tabindex="0">
+        return `<div class="block run-card ${r.cfg.arm === "baseline" ? "is-base" : "is-grnd"}${r.id === u.run ? " placed" : ""}" data-drag="ivrun" data-value="${esc(r.id)}" data-default-drop="viewer" tabindex="0">
           <div class="row"><span class="dot ${r.cfg.arm === "baseline" ? "base" : "grnd"}"></span><div class="b-title">${esc(runShortTitle(r))}</div></div>
           ${cyc ? sparkline(cyc, { key: "iv" + r.id, h: 28 }) : `<div class="flatline" aria-hidden="true"></div>`}
           <div class="b-meta">${runTag(r).map((t) => `<span class="chip">${esc(t)}</span>`).join("")}${r.origin === "live" ? '<span class="chip focus">Launched here</span>' : ""}</div>

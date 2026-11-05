@@ -50,13 +50,14 @@ const Compare = {
       <div class="shelf">${studies.map((st) => {
         const gr = armRuns(st, "g")[0]; if (!gr) return "";
         const cyc = DATA.cycles[gr.cfg.journey]; const cov = coverage(st, "all");
-        return `<div class="block${st.id === u.study ? " placed" : ""}" data-drag="study" data-value="${st.id}" data-default-drop="grounded-slot" tabindex="0">
+        return `<div class="block${st.id === u.study ? " placed" : ""}" data-drag="study" data-value="${esc(st.id)}" data-default-drop="grounded-slot" tabindex="0">
           <div class="b-title">${esc(cyc.short_title.replace(/^Cycle \d: /, ""))}</div>
           ${sparkline(cyc, { key: "sh" + st.id, h: 30 })}
           <div class="b-meta"><span class="chip">${DETAIL[gr.cfg.detail].name}</span>${st.baselineRuns.length ? "" : '<span class="chip warn">No matched baseline</span>'}${st.origin === "live" ? '<span class="chip focus">Launched here</span>' : ""}</div>
           <div class="tiny faint">${PERSONAS.find((p) => p.id === gr.cfg.persona).variant} · reviewed ${cov.done}/${cov.total}</div>
         </div>`;
       }).join("")}</div>
+      ${s ? this.modelCheck(s) : ""}
       <div class="pair-slots" style="margin-top:6px">
         <div class="pair-slot base"><div class="row"><span class="dot base"></span><b>Baseline</b><span class="faint small">matched automatically</span></div>
           ${b ? `<div class="small muted">${esc(runConfigLine(b))}</div><div class="tiny faint">${PERSONAS.find((p) => p.id === b.cfg.persona).variant} · ${s.baselineRuns.length} interview${s.baselineRuns.length > 1 ? "s" : ""}</div>`
@@ -67,6 +68,17 @@ const Compare = {
     </section>`;
   },
 
+  /* Both arms must share model settings. Saved v3 pairs come from one notebook run, so only flag pairs that involve a launched run. */
+  modelCheck(s) {
+    const runs = [...armRuns(s, "b"), ...armRuns(s, "g")];
+    if (!runs.some((r) => r.origin === "live")) return "";
+    const sigs = new Set(runs.map((r) => modelSig(r.model) || "unrecorded"));
+    const bN = s.baselineRuns.length, gN = s.groundedRuns.length;
+    const msgs = [];
+    if (sigs.size > 1) msgs.push(`The two sides were generated with different or unrecorded model settings (${Array.from(new Set(runs.map((r) => modelLine(r.model)))).join("; ")}), so score differences may reflect the model, not the journey.`);
+    if (bN !== gN) msgs.push(`The sides have different numbers of interviews (${bN} baseline, ${gN} grounded).`);
+    return msgs.length ? `<div class="note warn" style="margin-bottom:10px"><b>This pair is not fully matched.</b> ${msgs.join(" ")} Relaunch it from Design study to get a balanced pair.</div>` : "";
+  },
   body(u, s) {
     const cov = coverage(s, u.lane); const covAll = EVALUATORS.map((e) => ({ e, c: coverage(s, e.id) }));
     const partial = cov.done < cov.total;
@@ -164,7 +176,7 @@ const Compare = {
     obs.forEach((o) => (isB ? o.base : o.grnd).forEach((q) => quotes.push(q)));
     const notes = []; revs.forEach((x) => Object.entries(x.r.scores || {}).forEach(([cid, sc]) => sc.note && COMMON_IDX[cid] && notes.push({ who: x.ek.replace(/^human:/, ""), c: cid, n: sc.note })));
     return `<div class="reply-card ${isB ? "base" : "grnd"}">
-      <div class="rc-head"><div class="row"><span class="dot ${isB ? "base" : "grnd"}"></span><b>${isB ? "Baseline" : "Grounded"}</b>${run.cfg.arm === "grounded" ? `<span class="small faint">${esc(moodOf(t.state_before))} cue</span>` : ""}</div><span class="row"><span class="tiny faint">${anonCode(id)} · ${t.words || wordsOf(t.reply)} words</span><button class="btn ghost sm" data-action="open-interview" data-run="${run.id}" data-i="${i}">Prompt blocks</button></span></div>
+      <div class="rc-head"><div class="row"><span class="dot ${isB ? "base" : "grnd"}"></span><b>${isB ? "Baseline" : "Grounded"}</b>${run.cfg.arm === "grounded" ? `<span class="small faint">${esc(moodOf(t.state_before))} cue</span>` : ""}</div><span class="row"><span class="tiny faint">${anonCode(id)} · ${t.words || wordsOf(t.reply)} words</span><button class="btn ghost sm" data-action="open-interview" data-run="${esc(run.id)}" data-i="${i}">Prompt blocks</button></span></div>
       <div class="rc-body"><div class="read reply-text" data-side="${isB ? "base" : "grnd"}">${t.status === "done" ? highlightText(t.reply, quotes) : `<span class="faint">Not generated yet (${t.status}).</span>`}</div></div>
       <div class="rc-scores">
         ${COMMON.map((c) => { const v = laneScore(id, u.lane, c.id); return `<div class="score-line"><span>${c.name}</span><span class="row"><span class="pips ${isB ? "base" : "grnd"}">${[1, 2, 3].map((k) => `<i class="${v != null && v >= k ? "on" : ""}"></i>`).join("")}</span><b style="width:22px;text-align:right">${v == null ? (revs.some((x) => scoreVal(x.r, c.id) === "na") ? "N/A" : "–") : fmtNum(v)}</b></span></div>`; }).join("")}
@@ -174,10 +186,10 @@ const Compare = {
   },
   obsCard(o) {
     const label = { both: "Appears in both", baseline: "Baseline only", config: "Selected configuration only", none: "No material difference" }[o.kind];
-    return `<div class="obs" data-drop="quote" data-drop-id="${o.id}">
+    return `<div class="obs" data-drop="quote" data-drop-id="${esc(o.id)}">
       <div class="spread"><span class="chip ${o.kind === "config" ? "grnd" : o.kind === "baseline" ? "base" : o.kind === "both" ? "focus" : ""}">${label}</span>
-        <div class="row"><span class="tiny faint">${esc(o.author || "")}</span><button class="btn ghost sm" data-action="obs-del" data-id="${o.id}" aria-label="Delete observation">${ICON.x}</button></div></div>
-      <textarea class="note-in" rows="1" data-bind="obs-title" data-id="${o.id}" placeholder="${o.kind === "none" ? "Why there is no meaningful difference" : "What the team learns from this"}">${esc(o.title || "")}</textarea>
+        <div class="row"><span class="tiny faint">${esc(o.author || "")}</span><button class="btn ghost sm" data-action="obs-del" data-id="${esc(o.id)}" aria-label="Delete observation">${ICON.x}</button></div></div>
+      <textarea class="note-in" rows="1" data-bind="obs-title" data-id="${esc(o.id)}" placeholder="${o.kind === "none" ? "Why there is no meaningful difference" : "What the team learns from this"}">${esc(o.title || "")}</textarea>
       ${o.base.map((q) => `<div class="q base">“${esc(q)}”</div>`).join("")}${o.grnd.map((q) => `<div class="q grnd">“${esc(q)}”</div>`).join("")}
     </div>`;
   },
@@ -257,7 +269,7 @@ const Compare = {
       (q.side === "base" ? o.base : o.grnd).push(q.text);
       o.kind = o.base.length && o.grnd.length ? "both" : o.base.length ? "baseline" : "config";
       hideSelChip(); window.getSelection().removeAllRanges(); save();
-      setTimeout(() => { const t = $(`[data-bind="obs-title"][data-id="${o.id}"]`); if (t && !o.title) t.focus(); }, 0);
+      setTimeout(() => { const t = $(`[data-bind="obs-title"][data-id="${esc(o.id)}"]`); if (t && !o.title) t.focus(); }, 0);
     });
     App.on("shelf", (el) => { cmpUi().shelf = el.dataset.p; save(); });
     App.on("crit", (el) => { cmpUi().crit = el.dataset.c; save(); });

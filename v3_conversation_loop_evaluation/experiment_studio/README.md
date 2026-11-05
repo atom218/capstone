@@ -213,6 +213,25 @@ Reviews, observations and launched runs are saved in the browser's local
 storage as you work. The **Data** menu exports everything as JSON (which can
 be imported elsewhere) or exports scores as CSV, for example into `results/`.
 
+## How comparisons stay matched
+
+A launch always gives both sides the same number of interviews. An existing
+baseline is reused only when it shares the persona, memory policy and the
+exact recorded model settings (deployment, temperature, token limit). The
+saved v3 runs never recorded their model settings, so new launches generate
+their own baselines rather than pairing with them. Compare results warns
+about any pair whose two sides used different or unrecorded settings, or
+have different numbers of interviews.
+
+## Security notes
+
+- The local helper only accepts model calls from the Experiment Studio page
+  it served. Each run of `run_studio.py` creates a fresh session token that
+  the page must send back, and requests from other websites or unexpected
+  hosts are refused. This keeps other sites you visit from using your key.
+- Imported JSON files are checked field by field. Anything malformed or
+  unrecognized is skipped and counted in the import message.
+
 ## Known gaps
 
 - Cash flow planner and sexual well-being question packs are not in this

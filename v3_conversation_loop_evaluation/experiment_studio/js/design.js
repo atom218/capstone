@@ -57,6 +57,10 @@ function completedRunsMatching(cfg) {
   return Object.values(allRuns()).filter((r) => configKey(r.cfg) === k && r.turns.every((t) => t.status === "done"));
 }
 
+function reusableBaselines(d) {
+  const sig = modelSig(launchModel());
+  return completedRunsMatching(baselineCfg(d)).filter((r) => modelSig(r.model) === sig);
+}
 const Design = {
   render() {
     const d = draft();
@@ -77,7 +81,7 @@ const Design = {
   socket(d, s, i) {
     const filled = stepFilled(d, s.id);
     const val = this.socketValue(d, s.id);
-    return `<div class="socket${filled ? " filled" : ""}${d.step === s.id ? " active" : ""}" role="listitem" data-drop="${this.socketAccepts(s.id)}" data-drop-id="${s.id}">
+    return `<div class="socket${filled ? " filled" : ""}${d.step === s.id ? " active" : ""}" role="listitem" data-drop="${this.socketAccepts(s.id)}" data-drop-id="${esc(s.id)}">
       <button class="sr-btn" data-action="step" data-step="${s.id}" style="all:unset;position:absolute;inset:0;border-radius:16px;cursor:pointer" aria-label="Open step ${i + 1}: ${s.name}"></button>
       <div class="s-step"><b>${filled ? "✓" : i + 1}</b>${s.name}</div>
       ${val ? `<div class="s-name">${esc(val.title)}</div><div class="s-val">${esc(val.sub || "")}</div>` : `<div class="s-empty">${this.socketEmpty(s.id)}</div>`}
@@ -107,7 +111,7 @@ const Design = {
     if (d.step === "product") {
       return head("Products", "Drag a product into the first socket, or press Enter on it.") + `<div class="tray-list">${PRODUCTS.map((p) => {
         const qs = questionsOf(p.id); const screens = qs.filter(isScreen).length;
-        return `<div class="block${d.product === p.id ? " placed" : ""}${p.missing ? " disabled" : ""}" ${p.missing ? 'aria-disabled="true"' : `data-drag="product" data-value="${p.id}" data-default-drop="product" tabindex="0"`}>
+        return `<div class="block${d.product === p.id ? " placed" : ""}${p.missing ? " disabled" : ""}" ${p.missing ? 'aria-disabled="true"' : `data-drag="product" data-value="${esc(p.id)}" data-default-drop="product" tabindex="0"`}>
           <div class="b-title">${esc(p.name)}</div><div class="b-sub">${esc(p.blurb)}</div>
           <div class="b-meta">${p.missing ? `<span class="chip warn">Question pack not in this branch</span>` : `<span class="chip">${qs.length} questions</span><span class="chip">${screens} screens</span>`}</div>
         </div>`;
@@ -115,7 +119,7 @@ const Design = {
     }
     if (d.step === "audience") {
       return head("Saved personas", "Saved personas come from the team's standard persona dataset.") + `<div class="tray-list">${PERSONAS.map((p) => `
-        <div class="block${d.persona === p.id ? " placed" : ""}" data-drag="persona" data-value="${p.id}" data-default-drop="audience" tabindex="0">
+        <div class="block${d.persona === p.id ? " placed" : ""}" data-drag="persona" data-value="${esc(p.id)}" data-default-drop="audience" tabindex="0">
           <div class="b-title">${esc(p.name)}</div><div class="b-sub">${esc(p.variant)}. ${esc(p.note)}.</div>
           <div class="b-meta"><span class="chip">${wordsOf(DATA.persona_texts[p.id])} words</span>${p.id === "full_description" ? '<span class="chip ok">Has a matched baseline</span>' : '<span class="chip warn">No saved baseline</span>'}</div>
         </div>`).join("")}</div>
@@ -126,7 +130,7 @@ const Design = {
     }
     if (d.step === "journey") {
       return head("Journeys", "Drag one into the socket to use it. Drag two or three into the comparison area to compare first.") + `<div class="tray-list">${Object.values(DATA.cycles).map((c) => `
-        <div class="block journey-card${d.journey === c.id ? " placed" : ""}" data-drag="journey" data-value="${c.id}" data-default-drop="journey" tabindex="0">
+        <div class="block journey-card${d.journey === c.id ? " placed" : ""}" data-drag="journey" data-value="${esc(c.id)}" data-default-drop="journey" tabindex="0">
           <div class="b-title">${esc(c.short_title.replace(/^Cycle \d: /, ""))}</div>
           ${sparkline(c, { key: "t" })}
           <div class="b-sub">${esc(c.description)}</div>
@@ -134,15 +138,15 @@ const Design = {
     }
     if (d.step === "delivery") {
       return head("Cue detail", "How much of the journey the card describes.") +
-        `<div class="token-row">${Object.entries(DETAIL).map(([k, v]) => `<div class="block token${d.detail === k ? " placed" : ""}" data-drag="detail" data-value="${k}" data-default-drop="delivery" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
+        `<div class="token-row">${Object.entries(DETAIL).map(([k, v]) => `<div class="block token${d.detail === k ? " placed" : ""}" data-drag="detail" data-value="${esc(k)}" data-default-drop="delivery" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
         <div style="margin-top:18px">${head("Cue timing", "When the journey reaches the model.")}</div>
-        <div class="token-row">${Object.entries(TIMING).map(([k, v]) => `<div class="block token${d.timing === k ? " placed" : ""}" data-drag="timing" data-value="${k}" data-default-drop="delivery" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
+        <div class="token-row">${Object.entries(TIMING).map(([k, v]) => `<div class="block token${d.timing === k ? " placed" : ""}" data-drag="timing" data-value="${esc(k)}" data-default-drop="delivery" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
         <p class="tray-hint" style="margin-top:14px">The saved runs used two pairings: brief with opening turn only, and detailed with every turn plus full trajectory.</p>`;
     }
     return head("Prior-answer history", "What the persona can see of its own earlier answers.") +
-      `<div class="token-row">${Object.entries(HISTORY).map(([k, v]) => `<div class="block token${String(d.keep) === k ? " placed" : ""}" data-drag="history" data-value="${k}" data-default-drop="carry" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
+      `<div class="token-row">${Object.entries(HISTORY).map(([k, v]) => `<div class="block token${String(d.keep) === k ? " placed" : ""}" data-drag="history" data-value="${esc(k)}" data-default-drop="carry" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>
       <div style="margin-top:18px">${head("Persona profile", "How often the model receives it.")}</div>
-      <div class="token-row">${Object.entries(PROFILE_FREQ).map(([k, v]) => `<div class="block token${d.profileFreq === k ? " placed" : ""}" data-drag="freq" data-value="${k}" data-default-drop="carry" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>`;
+      <div class="token-row">${Object.entries(PROFILE_FREQ).map(([k, v]) => `<div class="block token${d.profileFreq === k ? " placed" : ""}" data-drag="freq" data-value="${esc(k)}" data-default-drop="carry" tabindex="0" title="${esc(v.sub)}">${v.name}</div>`).join("")}</div>`;
   },
 
   /* ---------- canvas per step ---------- */
@@ -201,7 +205,7 @@ const Design = {
         ${cmp.map((c, k) => `<polyline points="${c.stage_sentiments.map((v, i) => `${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="${colors[k]}" stroke-width="2.2" stroke-linejoin="round"/>
           ${c.stage_sentiments.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="${colors[k]}" stroke="#fff" stroke-width="1.5"><title>${esc(c.short_title)} · stage ${i + 1}: ${v}</title></circle>`).join("")}`).join("")}
       </svg>
-      <div class="legend">${cmp.map((c, k) => `<span><i style="background:${colors[k]}"></i>${esc(c.short_title.replace(/^Cycle \d: /, ""))} <button class="btn ghost sm" data-action="uncompare" data-id="${c.id}" aria-label="Remove from comparison">${ICON.x}</button></span>`).join("")}</div>`;
+      <div class="legend">${cmp.map((c, k) => `<span><i style="background:${colors[k]}"></i>${esc(c.short_title.replace(/^Cycle \d: /, ""))} <button class="btn ghost sm" data-action="uncompare" data-id="${esc(c.id)}" aria-label="Remove from comparison">${ICON.x}</button></span>`).join("")}</div>`;
     }
     return `<div class="panel-head"><h2>Compare, then choose</h2><span class="faint small">Journey choice is independent of the persona's demographics</span></div>
       <div class="dropzone" data-drop="journey" data-drop-id="compare" aria-label="Comparison area">
@@ -320,9 +324,11 @@ const Design = {
     const qs = d.product ? questionsOf(d.product).length : 7;
     const b = baselineCfg(d), g = groundedCfg(d);
     const baseExisting = d.product && d.persona ? completedRunsMatching(b) : [];
+    const reuse = d.product && d.persona ? reusableBaselines(d).slice(0, d.replicates) : [];
+    const newBaselines = d.replicates - reuse.length;
+    const unrecorded = baseExisting.filter((r) => !modelSig(r.model)).length;
     const grExisting = ready ? completedRunsMatching(g) : [];
-    const needBaseline = !baseExisting.length;
-    const interviews = d.replicates * (needBaseline ? 2 : 1);
+    const interviews = d.replicates + newBaselines;
     const missing = STEPS.filter((s) => !stepFilled(d, s.id)).map((s) => s.name.toLowerCase());
     const cyc = d.journey ? DATA.cycles[d.journey] : null;
     return `<section class="panel panel-pad">
@@ -336,14 +342,19 @@ const Design = {
         </ul>
         <div class="slot-label" style="margin-top:14px">Only the grounded interview receives</div>
         <ul><li><span class="dot grnd" style="margin-top:6px"></span><span>${cyc ? esc(cyc.short_title.replace(/^Cycle \d: /, "")) : "A journey, once chosen"}${d.detail && d.timing ? `<br/><span class="faint small">${DETAIL[d.detail].name}, ${TIMING[d.timing].name.toLowerCase()}</span>` : ""}</span></li></ul>
-        <div style="margin-top:14px">${d.product && d.persona ? (needBaseline
-          ? `<div class="note warn">No completed baseline uses this persona and memory policy. Launch adds a new matched baseline.</div>`
-          : `<div class="note ok">Matched baseline found: ${baseExisting.length} completed interview${baseExisting.length > 1 ? "s" : ""} with the same shared policy.</div>`) : ""}</div>
+        <div style="margin-top:14px">${d.product && d.persona ? (
+          !newBaselines
+            ? `<div class="note ok">${reuse.length} completed baseline${reuse.length > 1 ? "s" : ""} already use${reuse.length > 1 ? "" : "s"} this persona, memory policy and model settings, so launch reuses ${reuse.length > 1 ? "them" : "it"}. Both sides get ${d.replicates}.</div>`
+            : reuse.length
+            ? `<div class="note warn">${reuse.length} matching baseline${reuse.length > 1 ? "s" : ""} found. Launch adds ${newBaselines} more so both sides get ${d.replicates}.</div>`
+            : unrecorded
+            ? `<div class="note warn">A saved v3 baseline uses this persona and memory policy, but its model settings were not recorded. Launch generates ${newBaselines} new baseline${newBaselines > 1 ? "s" : ""} with the same settings as the grounded interviews, so both sides match.</div>`
+            : `<div class="note warn">No completed baseline uses this persona, memory policy and model settings. Launch adds ${newBaselines} matched baseline${newBaselines > 1 ? "s" : ""}, one per grounded interview.</div>`) : ""}</div>
       </section>
       <section class="panel panel-pad">
         <div class="spread" style="margin-bottom:10px"><h3>Launch</h3>
           <div class="row small"><span class="muted">Replicates</span><div class="stepper"><button data-action="rep" data-d="-1" aria-label="Fewer">−</button><span>${d.replicates}</span><button data-action="rep" data-d="1" aria-label="More">+</button></div></div></div>
-        <div class="count-row"><div class="count"><b>${interviews}</b><span>interview${interviews === 1 ? "" : "s"}</span></div><div class="count"><b>${qs}</b><span>questions each</span></div><div class="count"><b>${interviews * qs}</b><span>model calls</span></div></div>
+        <div class="count-row"><div class="count" title="${d.replicates} grounded + ${newBaselines} new baseline"><b>${interviews}</b><span>new interview${interviews === 1 ? "" : "s"}</span></div><div class="count"><b>${qs}</b><span>questions each</span></div><div class="count"><b>${interviews * qs}</b><span>model calls</span></div></div>
         ${grExisting.length ? `<div class="note ok" style="margin-top:10px">${grExisting.length} completed grounded interview${grExisting.length > 1 ? "s" : ""} already match this configuration. <button class="btn sm" data-action="open-existing" style="margin-top:6px">Open results</button></div>` : ""}
         ${!ready ? `<p class="small faint" style="margin-top:10px">Still needed: ${missing.join(", ")}.</p>` : ""}
         <button class="btn primary" style="width:100%;justify-content:center;margin-top:12px" data-action="launch" ${ready ? "" : "disabled"}>${grExisting.length ? "Run another replicate" : "Launch comparison"}</button>
@@ -359,9 +370,9 @@ const Design = {
       const items = studyItems(s); const reviewed = items.filter((id) => reviewsFor(id).some((x) => x.r.commonSubmittedAt)).length;
       return `<div class="run"><div class="spread"><b class="small">${esc(s.name)}</b><span class="tiny faint">${fmtTime(s.createdAt)}</span></div>
         ${runs.map((r) => `<div class="row small"><span class="dot ${r.cfg.arm === "baseline" ? "base" : "grnd"}"></span><span style="width:64px">${r.cfg.arm === "baseline" ? "Baseline" : "Grounded"}</span><div class="grow">${progBar(r)}</div>
-          ${runProgress(r).done ? `<button class="btn ghost sm" data-action="open-interview" data-run="${r.id}">View</button>` : ""}${runProgress(r).failed ? `<button class="btn sm" data-action="resume" data-run="${r.id}">Resume</button>` : RUNNING.has(r.id) ? '<span class="tiny faint">running</span>' : ""}</div>
+          ${runProgress(r).done ? `<button class="btn ghost sm" data-action="open-interview" data-run="${esc(r.id)}">View</button>` : ""}${runProgress(r).failed ? `<button class="btn sm" data-action="resume" data-run="${esc(r.id)}">Resume</button>` : RUNNING.has(r.id) ? '<span class="tiny faint">running</span>' : ""}</div>
           ${r.turns.find((t) => t.status === "failed") ? `<div class="tiny" style="color:#b8364a">${esc(r.turns.find((t) => t.status === "failed").error)}</div>` : ""}`).join("")}
-        <div class="spread tiny faint"><span>Reviewed ${reviewed} of ${items.length} generated answers</span><button class="btn ghost sm" data-action="open-study" data-study="${s.id}">Open results</button></div></div>`;
+        <div class="spread tiny faint"><span>Reviewed ${reviewed} of ${items.length} generated answers</span><button class="btn ghost sm" data-action="open-study" data-study="${esc(s.id)}">Open results</button></div></div>`;
     }).join("")}</div></section>`;
   },
 
@@ -446,27 +457,27 @@ function launchStudy() {
   const d = draft();
   if (!connReady()) { connModal(() => launchStudy()); return; }
   const g = groundedCfg(d), b = baselineCfg(d);
-  const baseExisting = completedRunsMatching(b);
+  const reuse = reusableBaselines(d).slice(0, d.replicates);
   const now = new Date().toISOString();
   const c = getConn();
+  const model = launchModel();
   const mk = (cfg, rep) => {
     const id = `live_${cfg.arm}_${hash(configKey(cfg) + now + rep)}`;
     const ptxt = cfg.profileText || DATA.persona_texts[cfg.persona];
     STORE.liveRuns[id] = {
       id, origin: "live", cfg, profileText: cfg.profileText, replicate: rep, createdAt: now,
       system: buildCard(ptxt, rulesFor(cfg)),
-      model: { deployment: c.deployment, apiVersion: c.apiVersion, temperature: c.temperature, maxTokens: c.maxTokens, top_p: 0.9 },
+      model: { ...model },
       versions: { persona: hash(ptxt), pack: hash(JSON.stringify(questionsOf(cfg.product).map((q) => q.question))), journey: cfg.journey ? DATA.cycles[cfg.journey].video_id : "none", loop: LOOP_VERSION },
       approvedProfile: d.profile ? JSON.parse(JSON.stringify(d.profile)) : null,
       turns: questionsOf(cfg.product).map((q, i) => ({ i, status: "pending" })),
     };
     return id;
   };
-  const groundedRuns = [], baselineRuns = baseExisting.length ? [baseExisting[0].id] : [];
-  for (let r = 1; r <= d.replicates; r++) {
-    groundedRuns.push(mk(g, r));
-    if (!baseExisting.length) baselineRuns.push(mk(b, r));
-  }
+  // Equal numbers on both sides: reuse baselines only when their recorded model settings are identical, then top up.
+  const groundedRuns = [], baselineRuns = reuse.map((r) => r.id);
+  for (let r = 1; r <= d.replicates; r++) groundedRuns.push(mk(g, r));
+  for (let r = baselineRuns.length + 1; r <= d.replicates; r++) baselineRuns.push(mk(b, r));
   const sid = "study_live_" + hash(now + d.name);
   STORE.liveStudies[sid] = { id: sid, origin: "live", name: d.name, product: d.product, decision: d.decision, groundedRuns, baselineRuns, createdAt: now };
   persist(true); App.render(); toast("Launched. Answers will appear as each turn finishes.");
