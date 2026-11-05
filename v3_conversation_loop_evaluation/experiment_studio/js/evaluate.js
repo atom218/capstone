@@ -6,7 +6,7 @@ function evalUi() {
   const u = STORE.ui.eval;
   if (u.scope) u.scope = u.scope.filter((id) => studyById(id));
   if (u.item && !itemContext(u.item)) { u.item = null; u.view = "home"; }
-  if (!Array.isArray(u.scope)) u.scope = Object.values(allStudies()).filter((s) => s.product === "subscription-management" && s.baselineRuns.length).map((s) => s.id);
+  if (!Array.isArray(u.scope)) u.scope = Object.values(allStudies()).filter((s) => s.product === "subscription-management" && s.baselineRuns.length && (runById(s.groundedRuns[0]) || {}).cfg?.persona === "full_description").map((s) => s.id);
   return u;
 }
 function queueSet() {

@@ -36,12 +36,18 @@ The longer original plan is in [`docs/project-plan.md`](docs/project-plan.md).
 - **Persona.** Filomena Nguyen, a 30-year-old operations manager from Parsons, West
   Virginia, from the NVIDIA Nemotron-Personas library (uuid
   `0ee14f548c2c48c99b6ed3d8369e194b`), in three biography lengths.
-- **Products tested.** *Subscription Manager* (a banking app feature) and *Still* (a mental
-  wellness app), with 7 interview questions each. Three of each product's questions show
-  a screenshot.
-- **Current state.** Version 3 (the five-block conversation loop) has 20 saved interviews
-  (140 answers). These can be browsed, reviewed and compared in **Experiment Studio**, a
-  local web app.
+- **Products tested.** Four products with 7 interview questions each. Three of each
+  product's questions show a screenshot.
+  - *Subscription Manager*, a banking app feature.
+  - *Still*, a mental wellness app.
+  - *Cash Flow Planner*.
+  - *Common Ground*, a sexual health app.
+- **Current state.** Version 3 (the five-block conversation loop) has **108 saved
+  interviews (756 answers)**. This is the full matrix: 4 products × 3 biography lengths ×
+  (1 baseline + 4 emotional cycles × 2 cue levels). Every grounded interview has a matched
+  baseline. The original 20 are in the V3 dashboard and the other 88 are in
+  `v3_conversation_loop_evaluation/expanded_runs/`. All 108 can be browsed, reviewed and
+  compared in **Experiment Studio**, a local web app.
 
 ---
 
@@ -181,13 +187,17 @@ interview studies. It has four workspaces:
 
 - **Design.** Drag blocks into sockets for product, audience, journey, delivery and memory,
   then launch a matched baseline and grounded run.
-- **Interviews.** Step through any saved or new interview question by question, with the
-  exact prompt split into Blocks A–E. All 140 saved answers are reproduced exactly from the
-  recorded messages.
+- **Interviews.** Pick a product, then pick an interview from a scrollable row of blocks.
+  Each block shows the cycle's mood line and its condition, such as "Brief cue" or "Short
+  bio with demographics". You can then step through the interview question by question,
+  with the exact prompt split into Blocks A–E. All 756 saved answers are reproduced
+  exactly from the recorded messages.
 - **Evaluate.** Blind, anonymized human scoring on five common criteria (0–3) plus journey
   checks, with an optional LLM-judge lane.
-- **Compare.** Drag a grounded configuration onto a slot; its matched baseline fills the
-  other. Read score differences per criterion and both answers side by side.
+- **Compare.** The row of blocks has one block per emotional cycle, labelled "Emotional
+  cycle N · feeling". Each block has a Brief cue / Detailed cue switch. Click or drag a
+  block onto a slot; its matched baseline fills the other. Read score differences per
+  criterion and both answers side by side.
   **Inspect the run** opens the persona, product pack, source journey, exact turn inputs
   and configuration.
 
@@ -301,8 +311,13 @@ into 7 stages, one per interview question.
   - `subscription-management`, the Subscription Manager in a banking app. Screens appear on
     questions 3, 5 and 6.
   - `mental-wellness`, the *Still* app. Screens appear on questions 3, 4 and 6.
-  - `cash-flow-planning` and `sexual-health` are defined but their packs are not in this
-    branch.
+  - `cash-flow-planning`, the *Cash Flow Planner*.
+  - `sexual-health`, the *Common Ground* app.
+
+  The Cash Flow Planner and Common Ground packs come from `product_interview_inputs.zip`
+  on the team Drive (Product → Product specs and prototypes). To re-run them, unzip it
+  into `v3_conversation_loop_evaluation/expanded_runs/inputs/`, which is git-ignored.
+  Their questions, screens and answers are already embedded in Experiment Studio.
 
 ## Saved V3 interviews
 
@@ -324,7 +339,36 @@ interviews × 7 questions). Each row contains:
 | `C2_*`, `C3_*`, `C4_*` | Cycles 2–4, coarse and fine, both products, full biography |
 
 All saved runs used 2 verbatim turns of memory and stated the biography once in Block A.
-The model temperature for the saved runs was not recorded.
+The model temperature for these original 20 runs was not recorded.
+
+### Expanded runs (the other 88 interviews)
+
+`v3_conversation_loop_evaluation/expanded_runs/` fills in the rest of the matrix:
+
+- the short-biography baselines and cycles for Subscription Manager and Still;
+- every biography length for Cash Flow Planner and Common Ground.
+
+The original 20 were not re-run.
+
+- `run_missing_sessions.py` builds the same Block A cards and prompts as
+  `src/personas/conversation_loop.py`. It calls Azure `gpt-4o` with temperature 0.7,
+  `top_p` 0.9, at most 360 tokens and 2 verbatim turns. It skips any configuration that
+  is already saved, so it can be stopped and resumed. Useful flags are `--only` (a
+  comma-separated list of session ids), `--limit` and `--workers`.
+- `expanded_runs.json` is read by `build_studio.py` and merged with the V3 dashboard data.
+  If the same session appears in both, the V3 dashboard version is used.
+- `expanded_runs.csv` has the same columns as `conversation_loop_evaluation_runs.csv`.
+
+Session ids follow the pattern `<cycle>_<product>_<arm>_<persona>`. For example:
+
+- `C3_cashflow_fine_short_behavioral`;
+- `B_sexual_text_only_full`, where `B` marks a baseline.
+
+Product codes are `sub`, `wellness`, `cashflow` and `sexual`. Persona codes are `full`,
+`short_demographics` and `short_behavioral`.
+
+These runs use the same Block A as the original 20, so the fine-arm issues listed under
+"Known issues" apply to them too.
 
 ---
 
@@ -343,6 +387,7 @@ v3_conversation_loop_evaluation/
   conversation-loop-evaluation-dashboard.html  V3 dashboard (5 tabs, data embedded)
   conversation_loop_evaluation_runs.csv    All 140 saved answers with exact prompts
   run_dashboard.py                         Local helper for tab 5 live calls
+  expanded_runs/                           88 extra interviews (JSON + CSV) and their runner
   experiment_studio/                       Experiment Studio (source, build, launcher)
 data/, results/                   Local only, git-ignored
 prompts/, evaluation/             Placeholders
@@ -400,15 +445,14 @@ These were found while preparing the client demo. They are documented, not yet f
    model's state, or to apply a gentle nudge toward the journey.
 3. **Block A edits in V3 tab 5 do not persist.** The prompt is rebuilt when you switch
    questions, so removed text comes back.
-4. **Short-biography runs (S7, S8) have no matched baseline.** Experiment Studio can launch
-   one.
-5. **Two product packs are missing.** Cash Flow Planner and Sexual Well-being are not in
-   this branch.
-6. **The scoring rubric is a working draft.** The 0–3 anchors and journey checks in
+4. **The scoring rubric is a working draft.** The 0–3 anchors and journey checks in
    Experiment Studio still need team agreement.
 
 Fixing items 1 and 2 changes the fine arm, so the affected interviews would need to be
 re-run.
+
+Two earlier gaps are now closed: the short-biography runs (S7 and S8) have matched
+baselines, and the Cash Flow Planner and Common Ground packs are included.
 
 ---
 
@@ -431,8 +475,9 @@ re-run.
   `experiment_studio/js/core.js` contains a JavaScript port of `build_card`,
   `build_messages` and `update_session_state`, and must stay in sync with it.
 - `experiment_studio/experiment-studio.html` is a **build output**. Edit `studio.css`,
-  `studio_template.html` or `js/*.js`, then run `python3 build_studio.py`. The build reads
-  saved data from `../conversation-loop-evaluation-dashboard.html` and never changes it.
+  `  studio_template.html` or `js/*.js`, then run `python3 build_studio.py`. The build reads
+  saved data from `../conversation-loop-evaluation-dashboard.html` and
+  `../expanded_runs/expanded_runs.json`, and never changes either.
 - Experiment Studio uses its own names for the v3 arms:
   - `coarse` is "Brief cue" with timing "opening turn only".
   - `fine` is "Detailed cue" with timing "every turn, plus full trajectory".

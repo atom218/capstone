@@ -25,6 +25,33 @@ function critSummary(study, cid, lane) {
   }
   return { hi, same, lo, scored };
 }
+function cycleLabel(cyc) { return `Emotional cycle ${String(cyc.id).replace(/\D/g, "")}`; }
+function cycleFeeling(cyc) { return cyc.short_title.replace(/^Cycle \d+: /, ""); }
+/* One shelf block per journey + persona + memory policy; its cue-detail variants become a switch inside the block. */
+function shelfGroupKey(study) {
+  const c = armRuns(study, "g")[0].cfg;
+  return [c.journey, c.persona, c.profileHash || "seed", c.keep, c.profileFreq, study.origin].join("|");
+}
+function shelfGroups(studies) {
+  const groups = {};
+  studies.forEach((st) => {
+    const gr = armRuns(st, "g")[0]; if (!gr) return;
+    const key = shelfGroupKey(st);
+    (groups[key] = groups[key] || { key, cfg: gr.cfg, origin: st.origin, options: [] }).options.push({ st, gr });
+  });
+  const detailOrder = Object.keys(DETAIL);
+  const personaOrder = PERSONAS.map((p) => p.id);
+  const list = Object.values(groups);
+  list.forEach((g) => {
+    g.options.sort((a, b) => detailOrder.indexOf(a.gr.cfg.detail) - detailOrder.indexOf(b.gr.cfg.detail));
+    g.options.forEach((o) => {
+      const same = g.options.filter((x) => x.gr.cfg.detail === o.gr.cfg.detail);
+      o.label = DETAIL[o.gr.cfg.detail].name + (same.length > 1 ? ` · ${TIMING[o.gr.cfg.timing].name.toLowerCase()}` : "");
+    });
+  });
+  return list.sort((a, b) => (a.origin === b.origin ? 0 : a.origin === "saved" ? -1 : 1)
+    || a.cfg.journey.localeCompare(b.cfg.journey) || personaOrder.indexOf(a.cfg.persona) - personaOrder.indexOf(b.cfg.persona));
+}
 function coverage(study, lane) {
   const items = studyItems(study);
   const done = items.filter((id) => reviewsFor(id).some((x) => (lane === "all" || x.lane === lane) && x.r.commonSubmittedAt)).length;
@@ -47,13 +74,17 @@ const Compare = {
       <div class="spread" style="margin-bottom:10px"><h2>Choose the comparison</h2>
         <div class="seg" role="group" aria-label="Product">${PRODUCTS.filter((p) => !p.missing).map((p) => `<button data-action="shelf" data-p="${p.id}" aria-pressed="${u.shelf === p.id}">${p.short}</button>`).join("")}</div></div>
       <p class="tray-hint">Drag a grounded configuration onto the right slot. Its matched baseline fills the left slot, and your selected question stays put.</p>
-      <div class="shelf">${studies.map((st) => {
-        const gr = armRuns(st, "g")[0]; if (!gr) return "";
+      <div class="shelf">${shelfGroups(studies).map((grp) => {
+        u.pick = u.pick || {};
+        const sel = grp.options.find((o) => o.st.id === u.study) || grp.options.find((o) => o.st.id === u.pick[grp.key]) || grp.options[0];
+        const st = sel.st, gr = sel.gr;
         const cyc = DATA.cycles[gr.cfg.journey]; const cov = coverage(st, "all");
         return `<div class="block${st.id === u.study ? " placed" : ""}" data-drag="study" data-value="${st.id}" data-default-drop="grounded-slot" tabindex="0">
-          <div class="b-title">${esc(cyc.short_title.replace(/^Cycle \d: /, ""))}</div>
+          <div class="b-title">${cycleLabel(cyc)}</div>
+          <div class="b-sub">${esc(cycleFeeling(cyc))}</div>
           ${sparkline(cyc, { key: "sh" + st.id, h: 30 })}
-          <div class="b-meta"><span class="chip">${DETAIL[gr.cfg.detail].name}</span>${st.baselineRuns.length ? "" : '<span class="chip warn">No matched baseline</span>'}${st.origin === "live" ? '<span class="chip focus">Launched here</span>' : ""}</div>
+          <div class="seg" role="group" aria-label="Cue detail for ${cycleLabel(cyc)}">${grp.options.map((o) => `<button data-action="cmp-pick" data-g="${esc(grp.key)}" data-s="${o.st.id}" aria-pressed="${o === sel}" title="${esc(DETAIL[o.gr.cfg.detail].sub)}">${esc(o.label)}</button>`).join("")}</div>
+          <div class="b-meta">${st.baselineRuns.length ? "" : '<span class="chip warn">No matched baseline</span>'}${st.origin === "live" ? '<span class="chip focus">Launched here</span>' : ""}</div>
           <div class="tiny faint">${PERSONAS.find((p) => p.id === gr.cfg.persona).variant} · reviewed ${cov.done}/${cov.total}</div>
         </div>`;
       }).join("")}</div>
@@ -61,7 +92,7 @@ const Compare = {
         <div class="pair-slot base"><div class="row"><span class="dot base"></span><b>Baseline</b><span class="faint small">matched automatically</span></div>
           ${b ? `<div class="small muted">${esc(runConfigLine(b))}</div><div class="tiny faint">${PERSONAS.find((p) => p.id === b.cfg.persona).variant} · ${s.baselineRuns.length} interview${s.baselineRuns.length > 1 ? "s" : ""}</div>`
             : `<div class="note warn small">No baseline shares this persona and memory policy. Launch one from Design study to complete the pair.</div>`}</div>
-        <div class="pair-slot grnd" data-drop="study" data-drop-id="grounded-slot"><div class="row"><span class="dot grnd"></span><b>Grounded</b><span class="faint small">${g ? esc(runLabel(g)) : "drop a configuration"}</span><span class="grow"></span>${s ? `<button class="btn sm" data-action="inspect">Inspect the run</button>` : ""}</div>
+        <div class="pair-slot grnd" data-drop="study" data-drop-id="grounded-slot"><div class="row"><span class="dot grnd"></span><b>Grounded</b><span class="faint small">${g ? `${cycleLabel(DATA.cycles[g.cfg.journey])} · ${esc(cycleFeeling(DATA.cycles[g.cfg.journey]))}` : "drop a configuration"}</span><span class="grow"></span>${s ? `<button class="btn sm" data-action="inspect">Inspect the run</button>` : ""}</div>
           ${g ? `<div class="small muted">${esc(runConfigLine(g))}</div><div class="tiny faint">${s.groundedRuns.length} interview${s.groundedRuns.length > 1 ? "s" : ""}${g.origin === "saved" ? " · saved v3 run" : " · " + fmtTime(g.createdAt)}</div>` : ""}</div>
       </div>
     </section>`;
@@ -231,7 +262,11 @@ const Compare = {
 
   bind() {
     const save = () => { persist(); App.render(); };
-    onDrop("study", (v) => { cmpUi().study = v; save(); });
+    onDrop("study", (v) => {
+      const u = cmpUi(); u.pick = u.pick || {};
+      [studyById(u.study), studyById(v)].forEach((st) => { if (st && armRuns(st, "g")[0]) u.pick[shelfGroupKey(st)] = st.id; });
+      u.study = v; save();
+    });
     onDrop("quote", (raw, target) => {
       const u = cmpUi(); const q = safeJson(raw, null); if (!q || u.q == null) return;
       const author = STORE.reviewer.lane === "jev" ? "Jev" : STORE.reviewer.name || "Reviewer";
@@ -247,6 +282,13 @@ const Compare = {
       setTimeout(() => { const t = $(`[data-bind="obs-title"][data-id="${o.id}"]`); if (t && !o.title) t.focus(); }, 0);
     });
     App.on("shelf", (el) => { cmpUi().shelf = el.dataset.p; save(); });
+    App.on("cmp-pick", (el) => {
+      const u = cmpUi(); u.pick = u.pick || {};
+      u.pick[el.dataset.g] = el.dataset.s;
+      const cur = studyById(u.study);
+      if (cur && armRuns(cur, "g")[0] && shelfGroupKey(cur) === el.dataset.g) u.study = el.dataset.s;
+      save();
+    });
     App.on("crit", (el) => { cmpUi().crit = el.dataset.c; save(); });
     App.on("lane-cmp", (el) => { cmpUi().lane = el.dataset.lane; save(); });
     App.on("cmp-q", (el) => { cmpUi().q = Number(el.dataset.i); save(); setTimeout(() => { const p = $("#qpanel"); if (p) p.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); }, 0); });

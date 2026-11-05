@@ -25,7 +25,12 @@ const PRODUCTS = [
   },
   {
     id: "cash-flow-planning", name: "Small Business Cash Flow Planner", short: "Cash flow",
-    blurb: "Forecasts upcoming inflows and outflows for a small business owner.", missing: true,
+    blurb: "Brings a small business's bank balance together with expected receipts and payments, so the owner can see when a cash gap could occur and test a later payment date.",
+    decisions: [
+      "What would owners verify before acting on a 30-day forecast?",
+      "Does comparing a later receipt date make the timing trade-off clear enough to change a plan?",
+      "What should a low-balance alert explain for an owner to act on it rather than ignore it?",
+    ],
   },
   {
     id: "mental-wellness", name: "Still", short: "Mental wellness",
@@ -37,8 +42,13 @@ const PRODUCTS = [
     ],
   },
   {
-    id: "sexual-health", name: "Sexual well-being", short: "Sexual well-being",
-    blurb: "A sexual well-being product with sensitive-topic questions.", missing: true,
+    id: "sexual-health", name: "Common Ground", short: "Sexual health",
+    blurb: "A sexual health preparation concept for exploring questions, preparing for a consultation, and choosing privacy and contact preferences.",
+    decisions: [
+      "What makes a source trustworthy enough for people to act on its guidance?",
+      "How much personal information would people share in exchange for more tailored guidance?",
+      "Which privacy and notification choices do people need before they would let the service contact them?",
+    ],
   },
 ];
 const PERSONAS = [
@@ -275,7 +285,7 @@ const SAVED_STUDIES = {};
     const cyc = DATA.cycles[g.cfg.journey];
     const id = "study_" + g.id;
     SAVED_STUDIES[id] = {
-      id, origin: "saved", name: `${productOf(g.cfg.product).short} · ${cyc.short_title.replace(/^Cycle \d: /, "")} · ${DETAIL[g.cfg.detail].name.toLowerCase()}`,
+      id, origin: "saved", name: `${productOf(g.cfg.product).short} · ${cyc.short_title.replace(/^Cycle \d: /, "")} · ${DETAIL[g.cfg.detail].name.toLowerCase()}${g.cfg.persona === "full_description" ? "" : ` · ${PERSONAS.find((p) => p.id === g.cfg.persona).variant.toLowerCase()}`}`,
       product: g.cfg.product, decision: "", groundedRuns: [g.id], baselineRuns: b ? [b.id] : [], createdAt: null,
     };
   });
@@ -540,10 +550,11 @@ function openLayer(html, kind = "modal", wide) {
   const box = document.createElement("div"); box.className = kind + (wide ? " wide" : ""); box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
   box.innerHTML = html;
   document.body.append(scrim, box);
+  document.body.classList.add("layer-open");
   const f = box.querySelector("input, button, textarea"); if (f) f.focus();
   return box;
 }
-function closeLayer() { $$(".scrim, .modal, .drawer").forEach((n) => n.remove()); }
+function closeLayer() { $$(".scrim, .modal, .drawer").forEach((n) => n.remove()); document.body.classList.remove("layer-open"); }
 function imageModal(uri, caption) {
   openLayer(`<div class="spread"><h3>${esc(caption || "Screen")}</h3><button class="btn ghost sm" data-action="close-layer">Close</button></div><img src="${uri}" alt="${esc(caption || "Product screen")}" style="width:100%;border-radius:10px;border:1px solid var(--line)"/>`, "modal", true);
 }

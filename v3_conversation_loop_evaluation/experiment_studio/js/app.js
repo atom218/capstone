@@ -33,6 +33,8 @@ const App = {
     const fkey = focus && focus.dataset && focus.dataset.bind ? { bind: focus.dataset.bind, i: focus.dataset.i, c: focus.dataset.c, id: focus.dataset.id, s: focus.selectionStart, e: focus.selectionEnd } : null;
     const actionFocus = this.lastKeyboard && focus && focus.dataset && focus.dataset.action ? { action: focus.dataset.action, key: focus.dataset.i || focus.dataset.c || focus.dataset.step || focus.dataset.v || focus.dataset.k || "" } : null;
     const scroller = document.scrollingElement; const y = scroller.scrollTop;
+    const shelfSig = (n) => `${n.childElementCount}:${n.firstElementChild ? n.firstElementChild.dataset.value : ""}`;
+    const shelves = $$("#page .shelf").map((n) => ({ sig: shelfSig(n), left: n.scrollLeft }));
     $("#rail").innerHTML = this.rail();
     $("#topbar").innerHTML = this.topbar();
     const mod = { design: Design, interviews: Interviews, evaluate: Evaluate, compare: Compare }[this.ws];
@@ -48,6 +50,7 @@ const App = {
     }
     document.title = `${WORKSPACES.find((w) => w.id === this.ws).title} · Experiment Studio`;
     scroller.scrollTop = y;
+    $$("#page .shelf").forEach((n, k) => { if (shelves[k] && shelves[k].sig === shelfSig(n)) n.scrollLeft = shelves[k].left; });
     if (fkey) {
       const sel = `[data-bind="${fkey.bind}"]` + (fkey.i != null ? `[data-i="${fkey.i}"]` : "") + (fkey.c ? `[data-c="${fkey.c}"]` : "") + (fkey.id ? `[data-id="${fkey.id}"]` : "");
       const n = $(sel); if (n) { n.focus(); if (n.setSelectionRange && fkey.s != null) try { n.setSelectionRange(fkey.s, fkey.e); } catch (e) {} }

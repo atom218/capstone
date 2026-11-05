@@ -200,10 +200,53 @@ python3 build_studio.py
 | `fine` | Detailed (fine rules) | Every turn, plus the full 7-stage trajectory in the card |
 
 All saved runs used two verbatim turns of history and stated the profile once
-in the system card. The two short-persona runs (S7, S8) have no matched
-baseline. Launching that configuration from Design study generates one. The
-model settings for the saved runs were not recorded, so the run inspector says
-so. New runs save the deployment, temperature, token limit and input versions.
+in the system card. The model settings for the original 20 runs were not
+recorded, so the run inspector says so. New runs save the deployment,
+temperature, token limit and input versions.
+
+## Expanded saved runs
+
+The original v3 dashboard covers 20 interviews on two products. The other 88
+interviews in the full matrix were generated with the same loop and settings,
+and are stored separately in `../expanded_runs/`. The full matrix is:
+
+- 4 products;
+- 3 persona variants;
+- for each product and persona, a baseline plus 4 cycles × brief and detailed
+  cues.
+
+So every product now has a matched baseline for every persona, including the
+short-persona runs S7 and S8.
+
+- `expanded_runs/run_missing_sessions.py` builds the same Block A cards and
+  prompts as `src/personas/conversation_loop.py`. Its settings are temperature
+  0.7, `top_p` 0.9, 360 tokens and two verbatim turns. It skips any
+  configuration already in the v3 dashboard or in `expanded_runs.json`, so it
+  can be stopped and resumed.
+- It reads the Cash Flow Planner and Common Ground packs from
+  `expanded_runs/inputs/`. This folder is git-ignored. Unzip
+  `product_interview_inputs.zip` from the team Drive (Product → Product specs
+  and prototypes) into it, so it contains `product_supplier.py` and
+  `product_inputs/`.
+- It writes `expanded_runs.json` (read by `build_studio.py`) and
+  `expanded_runs.csv` (same columns as `conversation_loop_evaluation_runs.csv`).
+- `build_studio.py` merges `expanded_runs.json` into the page when the file
+  exists. Sessions from the v3 dashboard win on any id clash.
+
+New session ids follow the existing pattern:
+
+- `B_<product>_text_only_<persona>` for baselines, for example
+  `B_cashflow_text_only_full`;
+- `C<n>_<product>_<arm>_<persona>` for grounded runs, for example
+  `C3_sexual_fine_short_behavioral`.
+
+```
+cd v3_conversation_loop_evaluation/expanded_runs
+/opt/miniconda3/bin/python run_missing_sessions.py   # needs numpy, pandas, Pillow
+```
+
+The Azure key comes from `AZURE_OPENAI_API_KEY`, `experiment_studio/.env`, or
+the team Drive notebook the original runs used. It is kept in memory only.
 
 ## Where data lives
 
@@ -213,8 +256,6 @@ be imported elsewhere) or exports scores as CSV, for example into `results/`.
 
 ## Known gaps
 
-- Cash flow planner and sexual well-being question packs are not in this
-  branch, so those products show as unavailable.
 - NVIDIA persona-library retrieval is not connected. A plain-language brief can
   be added to a saved persona as labeled supplied facts.
 - The 0–3 anchors and the implementation checks are working drafts for the

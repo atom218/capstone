@@ -2,8 +2,9 @@
 
 Reads the saved interviews, journeys, product packs and screens that are
 embedded in ../conversation-loop-evaluation-dashboard.html (the v3 dashboard),
-and inlines them with the studio's CSS and JavaScript. Nothing in the v3
-folder is modified.
+adds the extra interviews and product packs in
+../expanded_runs/expanded_runs.json when present, and inlines them with the
+studio's CSS and JavaScript. Nothing in the v3 folder is modified.
 
     cd v3_conversation_loop_evaluation/experiment_studio
     python3 build_studio.py
@@ -14,6 +15,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent / "conversation-loop-evaluation-dashboard.html"
+EXPANDED = HERE.parent / "expanded_runs" / "expanded_runs.json"
 OUT = HERE / "experiment-studio.html"
 JS_ORDER = ["core.js", "design.js", "interviews.js", "evaluate.js", "compare.js", "app.js"]
 KEEP = ["persona_texts", "format_block", "cycles", "products", "sessions", "azure_default", "insights"]
@@ -24,7 +26,12 @@ def load_v3_data():
     marker = "const D = "
     start = html.index(marker) + len(marker)
     data, _ = json.JSONDecoder().raw_decode(html[start:])
-    return {k: data[k] for k in KEEP if k in data}
+    data = {k: data[k] for k in KEEP if k in data}
+    if EXPANDED.exists():
+        extra = json.loads(EXPANDED.read_text(encoding="utf-8"))
+        for key in ("products", "sessions"):
+            data[key] = {**extra.get(key, {}), **data[key]}
+    return data
 
 
 def main():
