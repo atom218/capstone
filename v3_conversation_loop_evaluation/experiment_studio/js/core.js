@@ -11,6 +11,7 @@ Object.values(DATA.cycles).forEach((c) => { c.short_title = c.short_title.replac
 const NEUTRAL = "patience: medium; trust: medium; mood: neutral";
 const LOOP_VERSION = "conversation_loop v3 (5-block)";
 const STORE_KEY = "experiment_studio_v1";
+const CLOUD_SCHEMA_VERSION = 1;
 
 /* ---------------- catalogue ---------------- */
 const PRODUCTS = [
@@ -170,17 +171,252 @@ function loadStore() {
   s.draft = s.draft || null;          // design in progress
   s.ui = s.ui || {};
   s.conn = s.conn || null;
+  const defaults = window.STUDIO_CLOUD_DEFAULT || {};
+  const firebase = defaults.firebase || {};
+  s.cloud = s.cloud || {};
+  s.cloud.enabled = !!(s.cloud.enabled ?? defaults.enabled);
+  s.cloud.workspaceId = s.cloud.workspaceId || defaults.workspaceId || "accenture-northwestern-eval";
+  s.cloud.passcode = s.cloud.passcode || defaults.passcode || "";
+  s.cloud.lastMigrationId = s.cloud.lastMigrationId || "";
+  s.cloud.migratedAt = s.cloud.migratedAt || "";
+  s.cloud.firebase = {
+    apiKey: (s.cloud.firebase && s.cloud.firebase.apiKey) || firebase.apiKey || "",
+    authDomain: (s.cloud.firebase && s.cloud.firebase.authDomain) || firebase.authDomain || "",
+    projectId: (s.cloud.firebase && s.cloud.firebase.projectId) || firebase.projectId || "",
+    appId: (s.cloud.firebase && s.cloud.firebase.appId) || firebase.appId || "",
+    storageBucket: (s.cloud.firebase && s.cloud.firebase.storageBucket) || firebase.storageBucket || "",
+    messagingSenderId: (s.cloud.firebase && s.cloud.firebase.messagingSenderId) || firebase.messagingSenderId || "",
+  };
   return s;
 }
 let saveTimer = null;
+let suppressCloudPush = 0;
 function persist(immediate) {
   clearTimeout(saveTimer);
   const write = () => {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
     catch (e) { toast("This browser's storage is full. Export your work from the menu to keep it."); }
+    if (!suppressCloudPush) CloudSync.queuePush("persist");
   };
   if (immediate) write(); else saveTimer = setTimeout(write, 250);
 }
+function persistWithoutCloud(immediate) {
+  suppressCloudPush++;
+  try { persist(immediate); } finally { suppressCloudPush--; }
+}
+function suppressCloud(fn) {
+  suppressCloudPush++;
+  try { return fn(); } finally { suppressCloudPush--; }
+}
+
+/* ---------------- shared sync (Firebase) ---------------- */
+function cloudCfg() { return STORE.cloud || (STORE.cloud = {}); }
+function firebaseCfg() { const c = cloudCfg(); return c.firebase || (c.firebase = {}); }
+function reviewerLabel() {
+  return (STORE.reviewer && STORE.reviewer.name && STORE.reviewer.name.trim()) || (STORE.reviewer && STORE.reviewer.lane === "jev" ? "Jev" : "Reviewer");
+}
+function cloudStateLabel() {
+  if (!cloudCfg().enabled) return "Local only";
+  const s = CloudSync.state.status;
+  if (s === "online") return "Team sync online";
+  if (s === "connecting") return "Connecting";
+  if (s === "error") return "Sync error";
+  return "Offline";
+}
+function cloudStatusDot() {
+  if (!cloudCfg().enabled) return "#d3d0e2";
+  if (CloudSync.state.status === "online") return "var(--pos)";
+  if (CloudSync.state.status === "connecting") return "#e0ad4b";
+  return "#d06a77";
+}
+function storeSyncSlice() {
+  return {
+    reviews: STORE.reviews || {},
+    observations: STORE.observations || [],
+    liveRuns: STORE.liveRuns || {},
+    liveStudies: STORE.liveStudies || {},
+  };
+}
+function cloneObj(x) { return safeJson(JSON.stringify(x), {}); }
+function reviewStamp(r) {
+  if (!r || typeof r !== "object") return "";
+  return r.updatedAt || r.implSubmittedAt || r.commonSubmittedAt || r.startedAt || "";
+}
+function mergeByTimestamp(a, b, tsKey) {
+  if (!a) return b;
+  if (!b) return a;
+  const ta = a[tsKey] || "";
+  const tb = b[tsKey] || "";
+  if (tb > ta) return b;
+  return a;
+}
+function mergeReviews(base, incoming) {
+  const out = cloneObj(base);
+  Object.entries(incoming || {}).forEach(([ek, items]) => {
+    out[ek] = out[ek] || {};
+    Object.entries(items || {}).forEach(([id, rev]) => {
+      const curr = out[ek][id];
+      if (!curr) out[ek][id] = rev;
+      else out[ek][id] = reviewStamp(rev) > reviewStamp(curr) ? rev : curr;
+    });
+  });
+  return out;
+}
+function mergeObjMap(base, incoming, tsKey) {
+  const out = cloneObj(base);
+  Object.entries(incoming || {}).forEach(([id, row]) => {
+    out[id] = mergeByTimestamp(out[id], row, tsKey);
+  });
+  return out;
+}
+function mergeObservations(base, incoming) {
+  const byId = {};
+  (base || []).forEach((o) => { if (o && o.id) byId[o.id] = o; });
+  (incoming || []).forEach((o) => {
+    if (!o || !o.id) return;
+    const curr = byId[o.id];
+    byId[o.id] = !curr || (o.at || "") > (curr.at || "") ? o : curr;
+  });
+  return Object.values(byId);
+}
+function mergeSyncData(base, incoming) {
+  const a = base || {};
+  const b = incoming || {};
+  return {
+    reviews: mergeReviews(a.reviews || {}, b.reviews || {}),
+    observations: mergeObservations(a.observations || [], b.observations || []),
+    liveRuns: mergeObjMap(a.liveRuns || {}, b.liveRuns || {}, "createdAt"),
+    liveStudies: mergeObjMap(a.liveStudies || {}, b.liveStudies || {}, "createdAt"),
+  };
+}
+function applySyncSlice(slice) {
+  const merged = mergeSyncData(storeSyncSlice(), slice || {});
+  const before = JSON.stringify(storeSyncSlice());
+  const after = JSON.stringify(merged);
+  if (before === after) return false;
+  STORE.reviews = merged.reviews;
+  STORE.observations = merged.observations;
+  STORE.liveRuns = merged.liveRuns;
+  STORE.liveStudies = merged.liveStudies;
+  return true;
+}
+const CloudSync = {
+  state: { status: "idle", message: "", lastSyncAt: "", writes: 0 },
+  app: null,
+  db: null,
+  docRef: null,
+  unsub: null,
+  pushTimer: null,
+  pushBusy: false,
+  pushPending: false,
+  ready() {
+    const c = cloudCfg();
+    const f = firebaseCfg();
+    return !!(c.enabled && c.workspaceId && f.apiKey && f.projectId && f.appId);
+  },
+  setStatus(status, message) {
+    this.state.status = status;
+    this.state.message = message || "";
+    this.state.lastSyncAt = new Date().toISOString();
+    if (typeof App !== "undefined" && App.renderSoon) App.renderSoon();
+  },
+  reset() {
+    if (this.unsub) this.unsub();
+    this.unsub = null;
+    this.docRef = null;
+    this.db = null;
+    this.app = null;
+  },
+  init() {
+    this.reset();
+    if (!this.ready()) {
+      this.setStatus(cloudCfg().enabled ? "offline" : "idle", cloudCfg().enabled ? "Missing Firebase config" : "");
+      return;
+    }
+    if (!(window.firebase && firebase.initializeApp && firebase.firestore)) {
+      this.setStatus("error", "Firebase SDK not loaded");
+      return;
+    }
+    try {
+      const cfg = firebaseCfg();
+      const key = cfg.projectId || "default";
+      const existing = firebase.apps.find((x) => x.name === "studio-" + key);
+      this.app = existing || firebase.initializeApp(cfg, "studio-" + key);
+      this.db = this.app.firestore();
+      this.docRef = this.db.collection("studioWorkspaces").doc(cloudCfg().workspaceId);
+      this.setStatus("connecting", "Connecting to Firestore");
+      this.unsub = this.docRef.onSnapshot((snap) => {
+        if (!snap.exists) {
+          this.setStatus("online", "Workspace created");
+          this.queuePush("bootstrap");
+          return;
+        }
+        const doc = snap.data() || {};
+        if (cloudCfg().passcode && doc.passcode && doc.passcode !== cloudCfg().passcode) {
+          this.setStatus("error", "Passcode mismatch for this workspace");
+          return;
+        }
+        if (applySyncSlice(doc.payload || {})) {
+          suppressCloud(() => persistWithoutCloud(true));
+          if (typeof App !== "undefined" && App.renderSoon) App.renderSoon();
+        }
+        this.setStatus("online", "Synced with team workspace");
+      }, (err) => {
+        this.setStatus("error", String((err && err.message) || err || "Failed to subscribe"));
+      });
+    } catch (err) {
+      this.setStatus("error", String((err && err.message) || err));
+    }
+  },
+  queuePush() {
+    if (!this.ready() || !this.docRef || this.state.status === "error") return;
+    clearTimeout(this.pushTimer);
+    this.pushTimer = setTimeout(() => this.pushNow(), 700);
+  },
+  async pushNow(opts = {}) {
+    if (!this.ready() || !this.docRef) return;
+    if (this.pushBusy) { this.pushPending = true; return; }
+    this.pushBusy = true;
+    try {
+      const local = storeSyncSlice();
+      const migrationId = opts.migrationId || null;
+      await this.db.runTransaction(async (tx) => {
+        const snap = await tx.get(this.docRef);
+        const doc = snap.exists ? (snap.data() || {}) : {};
+        const remote = doc.payload || {};
+        const merged = mergeSyncData(remote, local);
+        const out = {
+          schemaVersion: CLOUD_SCHEMA_VERSION,
+          passcode: cloudCfg().passcode || "",
+          updatedBy: reviewerLabel(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          payload: merged,
+        };
+        if (migrationId) out.migrationIds = firebase.firestore.FieldValue.arrayUnion(migrationId);
+        tx.set(this.docRef, out, { merge: true });
+      });
+      this.state.writes += 1;
+      this.state.lastSyncAt = new Date().toISOString();
+      if (this.state.status !== "online") this.setStatus("online", "Synced with team workspace");
+    } catch (err) {
+      this.setStatus("error", String((err && err.message) || err));
+    } finally {
+      this.pushBusy = false;
+      if (this.pushPending) { this.pushPending = false; this.queuePush(); }
+    }
+  },
+  async migrateNow() {
+    if (!this.ready()) throw new Error("Enable team sync first");
+    const c = cloudCfg();
+    const migrationId = c.lastMigrationId || ("mig_" + hash(String(Date.now()) + ":" + Object.keys(STORE.reviews || {}).length));
+    c.lastMigrationId = migrationId;
+    persistWithoutCloud(true);
+    await this.pushNow({ migrationId });
+    c.migratedAt = new Date().toISOString();
+    persistWithoutCloud(true);
+    return migrationId;
+  },
+};
 
 /* ---------------- prompt assembly ----------------
    Mirrors build_card / build_messages / update_session_state. */
@@ -589,6 +825,16 @@ function detectHelper() {
       CONN.envConfig = cfg;
       CONN.token = cfg.token || null; // per-session secret that proves the request came from this page
       CONN.helper.hasKey = CONN.helper.hasKey || !!cfg.has_key;
+      if (cfg.firebaseEnabled != null) cloudCfg().enabled = String(cfg.firebaseEnabled).toLowerCase() === "true" || String(cfg.firebaseEnabled) === "1";
+      if (cfg.firebaseWorkspaceId) cloudCfg().workspaceId = cfg.firebaseWorkspaceId;
+      if (cfg.firebasePasscode) cloudCfg().passcode = cfg.firebasePasscode;
+      const f = firebaseCfg();
+      if (cfg.firebaseApiKey) f.apiKey = cfg.firebaseApiKey;
+      if (cfg.firebaseAuthDomain) f.authDomain = cfg.firebaseAuthDomain;
+      if (cfg.firebaseProjectId) f.projectId = cfg.firebaseProjectId;
+      if (cfg.firebaseAppId) f.appId = cfg.firebaseAppId;
+      if (cfg.firebaseStorageBucket) f.storageBucket = cfg.firebaseStorageBucket;
+      if (cfg.firebaseMessagingSenderId) f.messagingSenderId = cfg.firebaseMessagingSenderId;
     }).catch(() => {});
   }).catch(() => {});
 }
@@ -635,6 +881,65 @@ function connModal(after) {
     try { sessionStorage.setItem("experiment_studio_key", v("#cKey")); } catch (e) {}
     persist(true); closeLayer(); toast("Connection saved");
     if (after) after(); else App.render();
+  };
+}
+
+function cloudModal() {
+  const c = cloudCfg();
+  const f = firebaseCfg();
+  const box = openLayer(`
+    <div class="spread"><h2>Team sync (Firebase)</h2><button class="btn ghost sm" data-action="close-layer">Close</button></div>
+    <p class="small muted">Enable this to share reviews, observations and launched runs with the whole team in near real time.</p>
+    <div class="note ${CloudSync.state.status === "online" ? "ok" : CloudSync.state.status === "error" ? "warn" : "focus"}">
+      <b>${esc(cloudStateLabel())}</b>${CloudSync.state.message ? ` · ${esc(CloudSync.state.message)}` : ""}${CloudSync.state.lastSyncAt ? ` · ${esc(fmtTime(CloudSync.state.lastSyncAt))}` : ""}
+    </div>
+    <div class="field"><label><input id="syncEnabled" type="checkbox" ${c.enabled ? "checked" : ""}/> Enable shared sync</label></div>
+    <div class="slot-pair">
+      <div class="field"><label for="syncWorkspace">Workspace id</label><input id="syncWorkspace" value="${esc(c.workspaceId || "")}" placeholder="team-evaluation"/></div>
+      <div class="field"><label for="syncPass">Shared passcode</label><input id="syncPass" type="password" value="${esc(c.passcode || "")}" placeholder="Optional team code"/></div>
+    </div>
+    <h3 style="margin:8px 0 4px">Firebase web config</h3>
+    <div class="field"><label for="fbApiKey">API key</label><input id="fbApiKey" value="${esc(f.apiKey || "")}"/></div>
+    <div class="field"><label for="fbAuthDomain">Auth domain</label><input id="fbAuthDomain" value="${esc(f.authDomain || "")}" placeholder="project-id.firebaseapp.com"/></div>
+    <div class="field"><label for="fbProjectId">Project id</label><input id="fbProjectId" value="${esc(f.projectId || "")}"/></div>
+    <div class="field"><label for="fbAppId">App id</label><input id="fbAppId" value="${esc(f.appId || "")}"/></div>
+    <div class="slot-pair">
+      <div class="field"><label for="fbBucket">Storage bucket</label><input id="fbBucket" value="${esc(f.storageBucket || "")}"/></div>
+      <div class="field"><label for="fbMsg">Messaging sender id</label><input id="fbMsg" value="${esc(f.messagingSenderId || "")}"/></div>
+    </div>
+    <div class="row wrap" style="justify-content:flex-end">
+      <button class="btn" id="syncMigrate">Upload local data now</button>
+      <button class="btn primary" id="syncSave">Save and connect</button>
+    </div>`);
+  const val = (sel) => box.querySelector(sel).value.trim();
+  box.querySelector("#syncSave").onclick = () => {
+    c.enabled = box.querySelector("#syncEnabled").checked;
+    c.workspaceId = val("#syncWorkspace") || "accenture-northwestern-eval";
+    c.passcode = val("#syncPass");
+    c.firebase = {
+      apiKey: val("#fbApiKey"),
+      authDomain: val("#fbAuthDomain"),
+      projectId: val("#fbProjectId"),
+      appId: val("#fbAppId"),
+      storageBucket: val("#fbBucket"),
+      messagingSenderId: val("#fbMsg"),
+    };
+    persistWithoutCloud(true);
+    CloudSync.init();
+    closeLayer();
+    toast(c.enabled ? "Team sync settings saved" : "Shared sync disabled");
+    if (typeof App !== "undefined") App.render();
+  };
+  box.querySelector("#syncMigrate").onclick = async () => {
+    try {
+      box.querySelector("#syncSave").click();
+      if (!cloudCfg().enabled) throw new Error("Enable shared sync first");
+      const mid = await CloudSync.migrateNow();
+      toast("Uploaded local data (" + mid + ")");
+      if (typeof App !== "undefined") App.render();
+    } catch (err) {
+      toast("Sync upload failed: " + (err.message || err));
+    }
   };
 }
 

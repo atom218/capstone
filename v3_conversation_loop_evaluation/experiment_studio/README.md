@@ -143,16 +143,38 @@ You can also enter the key directly in **Model connection** without creating
 
 ### 4. Save and share your work
 
-Reviews, observations, and new runs are saved in that browser's local storage.
-They do not automatically sync to GitHub or to teammates. Use **Data → Export
-everything (JSON)** to back up or share your work; the recipient can use
-**Data → Import a JSON export**. Use **Export scores (CSV)** for a score table.
+By default, reviews, observations, and new runs are saved in that browser's
+local storage. Use **Data → Export everything (JSON)** to back up or share your
+work manually, and **Export scores (CSV)** for a score table.
 
-Continue using the same browser profile and local URL, including its port.
-A different browser, port, or direct-file URL has separate storage. Export
-your work before changing these or clearing browser data. A teammate must
-start the dashboard on their own computer; your `127.0.0.1` URL points only
-to your computer.
+For team-wide live syncing, configure **Team sync (Firebase)** from the top bar
+or from **Data**, then enable it. Once enabled, all reviewers in the same
+workspace id see each other's updates in near real time, and work persists
+after refresh or closing the tab.
+
+When running local-only mode, continue using the same browser profile and local
+URL, including its port. A different browser, port, or direct-file URL has
+separate storage.
+
+### 5. Publish for shared team evaluation (Vercel + Firebase)
+
+1. **Create Firestore** in a Firebase project (Native mode).
+2. **Apply rules** from `firebase/firestore.rules` after replacing
+   `REPLACE_WITH_TEAM_PASSCODE`.
+3. **Deploy Studio to Vercel** with root directory
+   `v3_conversation_loop_evaluation/experiment_studio`.
+4. In Vercel project environment variables, set:
+   - `STUDIO_FIREBASE_ENABLED=true`
+   - `STUDIO_FIREBASE_WORKSPACE_ID=<team workspace id>`
+   - `STUDIO_SHARED_PASSCODE=<same passcode used in rules>`
+   - `STUDIO_FIREBASE_API_KEY`, `STUDIO_FIREBASE_AUTH_DOMAIN`,
+     `STUDIO_FIREBASE_PROJECT_ID`, `STUDIO_FIREBASE_APP_ID`,
+     `STUDIO_FIREBASE_STORAGE_BUCKET`, `STUDIO_FIREBASE_MESSAGING_SENDER_ID`
+5. Redeploy. The build injects these values into `experiment-studio.html`, so
+   reviewers only need the URL.
+
+The first reviewer can use **Upload local data now** in Team sync settings to
+seed Firestore from existing local browser data.
 
 ### If something does not open
 
@@ -175,7 +197,8 @@ use the launcher above for live model calls and a consistent local URL.
 The source is `studio_template.html`, `studio.css` and the files in `js/`.
 `build_studio.py` inlines them with the saved interviews, journeys, product
 packs and screens it reads from `../conversation-loop-evaluation-dashboard.html`.
-The v3 files are only read, never changed.
+If Firebase env variables are set, it also embeds the default Team sync
+configuration in the built page. The v3 files are only read, never changed.
 
 ```
 python3 build_studio.py
@@ -186,6 +209,9 @@ python3 build_studio.py
 | `Start Experiment Studio.command` | Double-click launcher for macOS |
 | `run_studio.py` | Local server: rebuilds, serves, opens the browser, relays model calls, reads `.env` |
 | `.env.example` | Template for the local Azure settings; copy to `.env` |
+| `vercel.json` | Vercel static-host config (routes `/` to `experiment-studio.html`) |
+| `firebase/firestore.rules` | Firestore rules template for no-login team syncing |
+| `firebase/schema.md` | Firestore document schema used by Team sync |
 | `js/core.js` | Data model, storage, drag-and-drop engine, twin rail, and a port of `build_card`, `build_messages` and `update_session_state` from `src/personas/conversation_loop.py`. Also the live runner and LLM judge. |
 | `js/design.js` | Design study workspace |
 | `js/interviews.js` | Interviews workspace: prompt blocks A–E and answers per question |
@@ -252,9 +278,11 @@ the team Drive notebook the original runs used. It is kept in memory only.
 
 ## Where data lives
 
-Reviews, observations and launched runs are saved in the browser's local
-storage as you work. The **Data** menu exports everything as JSON (which can
-be imported elsewhere) or exports scores as CSV, for example into `results/`.
+Reviews, observations and launched runs are always saved locally in the
+browser. When Team sync is enabled, the same data is also merged into Firestore
+(`studioWorkspaces/<workspaceId>`) and streamed back to all connected
+reviewers. The **Data** menu still exports everything as JSON (which can be
+imported elsewhere) or exports scores as CSV, for example into `results/`.
 
 ## How comparisons stay matched
 

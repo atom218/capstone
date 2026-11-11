@@ -426,8 +426,11 @@ no `pip install`, Node.js or notebook server.
 - **Notebooks.** Run them in Colab or locally. They expect the team datasets from the Drive
   and Azure credentials in environment variables.
 
-Reviews and runs made in Experiment Studio are stored in that browser's local storage. Use
-**Data → Export everything (JSON)** to share them with teammates.
+Experiment Studio always keeps a local browser copy of reviews and runs. For
+team collaboration, enable **Team sync (Firebase)** and point everyone at the
+same workspace id so updates sync in near real time across reviewers. You can
+still use **Data → Export everything (JSON)** for backups and **Export scores
+(CSV)** for analysis.
 
 ---
 

@@ -36,6 +36,15 @@ CONFIG_VARS = {  # sent to the page so the connection dialog is prefilled; never
     "AZURE_OPENAI_ENDPOINT": "endpoint",
     "AZURE_OPENAI_DEPLOYMENT": "deployment",
     "AZURE_OPENAI_API_VERSION": "apiVersion",
+    "STUDIO_FIREBASE_ENABLED": "firebaseEnabled",
+    "STUDIO_FIREBASE_WORKSPACE_ID": "firebaseWorkspaceId",
+    "STUDIO_SHARED_PASSCODE": "firebasePasscode",
+    "STUDIO_FIREBASE_API_KEY": "firebaseApiKey",
+    "STUDIO_FIREBASE_AUTH_DOMAIN": "firebaseAuthDomain",
+    "STUDIO_FIREBASE_PROJECT_ID": "firebaseProjectId",
+    "STUDIO_FIREBASE_APP_ID": "firebaseAppId",
+    "STUDIO_FIREBASE_STORAGE_BUCKET": "firebaseStorageBucket",
+    "STUDIO_FIREBASE_MESSAGING_SENDER_ID": "firebaseMessagingSenderId",
 }
 
 

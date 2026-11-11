@@ -81,6 +81,7 @@ const App = {
   },
   topbar() {
     const helper = CONN.helper ? "Local helper" : connReady() ? "Direct" : "Not connected";
+    const sync = cloudStateLabel();
     const left = this.ws === "design"
       ? `<div class="title"><span class="tiny faint">Design study</span><input data-bind="study-name" value="${esc(draft().name)}" aria-label="Study name"/></div>`
       : this.ws === "interviews"
@@ -91,6 +92,7 @@ const App = {
     return `${left}<span class="grow"></span>
       ${this.ws === "design" ? `<button class="btn ghost sm" data-action="new-study">New study</button>` : ""}
       <button class="btn sm" data-action="conn"><span class="dot" style="background:${connReady() ? "var(--pos)" : "var(--line-2)"}"></span>${helper}</button>
+      <button class="btn sm" data-action="cloud"><span class="dot" style="background:${cloudStatusDot()}"></span>${sync}</button>
       <button class="btn sm" data-action="menu" aria-haspopup="dialog">Data</button>`;
   },
   menu() {
@@ -99,7 +101,9 @@ const App = {
       <p class="muted small">Reviews, observations and launched runs are saved in this browser as you work. Export them to share with the team or keep a copy in the repo's <code>results/</code> folder.</p>
       <div class="count-row"><div class="count"><b>${nRev}</b><span>reviews</span></div><div class="count"><b>${STORE.observations.length}</b><span>observations</span></div><div class="count"><b>${Object.keys(STORE.liveRuns).length}</b><span>launched runs</span></div></div>
       <div class="row wrap"><button class="btn" data-action="export-json">Export everything (JSON)</button><button class="btn" data-action="export-csv">Export scores (CSV)</button>
-        <label class="btn" style="cursor:pointer">Import a JSON export<input type="file" accept="application/json" id="importFile" class="sr"/></label></div>`);
+        <label class="btn" style="cursor:pointer">Import a JSON export<input type="file" accept="application/json" id="importFile" class="sr"/></label>
+        <button class="btn" data-action="cloud">Team sync settings</button>
+        <button class="btn" data-action="cloud-migrate">Upload local data to team workspace</button></div>`);
     box.querySelector("#importFile").onchange = (e) => { if (e.target.files[0]) { importAll(e.target.files[0]); closeLayer(); } };
   },
   init() {
@@ -108,6 +112,16 @@ const App = {
     this.on("ws", (el) => this.go(el.dataset.ws));
     this.on("close-layer", () => { closeLayer(); if (STORE.ui.cmp) STORE.ui.cmp.drawer = false; persist(); });
     this.on("conn", () => connModal());
+    this.on("cloud", () => cloudModal());
+    this.on("cloud-migrate", async () => {
+      try {
+        const id = await CloudSync.migrateNow();
+        toast("Uploaded local data (" + id + ")");
+      } catch (err) {
+        toast("Sync upload failed: " + (err.message || err));
+      }
+      this.render();
+    });
     this.on("reset-view", () => {
       if (this.ws === "design") STORE.draft = null;
       else if (this.ws === "interviews") delete STORE.ui.iv;
@@ -145,7 +159,8 @@ const App = {
     const fromHash = location.hash.slice(1);
     this.ws = WORKSPACES.some((x) => x.id === fromHash) ? fromHash : STORE.ui.ws || "design";
     this.render();
-    detectHelper().then(() => this.render());
+    detectHelper().then(() => { CloudSync.init(); this.render(); });
+    CloudSync.init();
   },
 };
 

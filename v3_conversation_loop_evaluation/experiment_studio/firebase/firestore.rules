@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Lightweight gate for no-login collaboration mode.
+    // Replace these values for your team deployment.
+    function passcode() { return "REPLACE_WITH_TEAM_PASSCODE"; }
+    function maxLen(v, n) { return v is string && v.size() <= n; }
+    function reviewsOk(p) { return p.keys().hasOnly(["reviews", "observations", "liveRuns", "liveStudies"]); }
+
+    match /studioWorkspaces/{workspaceId} {
+      // Team reads are public for shared dashboards.
+      allow read: if true;
+
+      // Allow writes only to known workspace ids and expected fields.
+      allow create, update: if workspaceId.matches("^[A-Za-z0-9_-]{3,80}$")
+        && request.resource.data.keys().hasOnly([
+          "schemaVersion", "passcode", "updatedBy", "updatedAt", "payload", "migrationIds"
+        ])
+        && request.resource.data.schemaVersion == 1
+        && maxLen(request.resource.data.updatedBy, 120)
+        && request.resource.data.passcode == passcode()
+        && reviewsOk(request.resource.data.payload);
+
+      allow delete: if false;
+    }
+  }
+}

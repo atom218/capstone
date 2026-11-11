@@ -11,6 +11,7 @@ studio's CSS and JavaScript. Nothing in the v3 folder is modified.
 """
 
 import json
+import os
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -40,7 +41,26 @@ def main():
     css = (HERE / "studio.css").read_text(encoding="utf-8")
     js = "\n\n".join((HERE / "js" / name).read_text(encoding="utf-8") for name in JS_ORDER)
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    page = template.replace("/*__CSS__*/", css).replace("/*__JS__*/", js).replace("/*__DATA__*/", payload)
+    cloud = {
+        "enabled": str(os.environ.get("STUDIO_FIREBASE_ENABLED", "")).lower() in {"1", "true", "yes", "on"},
+        "workspaceId": os.environ.get("STUDIO_FIREBASE_WORKSPACE_ID", "accenture-northwestern-eval"),
+        "passcode": os.environ.get("STUDIO_SHARED_PASSCODE", ""),
+        "firebase": {
+            "apiKey": os.environ.get("STUDIO_FIREBASE_API_KEY", ""),
+            "authDomain": os.environ.get("STUDIO_FIREBASE_AUTH_DOMAIN", ""),
+            "projectId": os.environ.get("STUDIO_FIREBASE_PROJECT_ID", ""),
+            "appId": os.environ.get("STUDIO_FIREBASE_APP_ID", ""),
+            "storageBucket": os.environ.get("STUDIO_FIREBASE_STORAGE_BUCKET", ""),
+            "messagingSenderId": os.environ.get("STUDIO_FIREBASE_MESSAGING_SENDER_ID", ""),
+        },
+    }
+    cloud_payload = json.dumps(cloud, ensure_ascii=False).replace("</", "<\\/")
+    page = (
+        template.replace("/*__CSS__*/", css)
+        .replace("/*__JS__*/", js)
+        .replace("/*__DATA__*/", payload)
+        .replace("/*__CLOUD__*/", cloud_payload)
+    )
     OUT.write_text(page, encoding="utf-8")
     sessions = len(data["sessions"])
     print(f"Wrote {OUT.name} ({OUT.stat().st_size / 1024:.0f} KB) with {sessions} saved interviews.")
