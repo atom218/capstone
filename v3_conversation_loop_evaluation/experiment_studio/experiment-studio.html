@@ -2698,7 +2698,7 @@ const Interviews = {
 "use strict";
 
 function evalUi() {
-  STORE.ui.eval = STORE.ui.eval || { view: "home", item: null, open: "persona", scope: null, support: null, filter: "todo" };
+  STORE.ui.eval = STORE.ui.eval || { view: "home", item: null, open: "persona", scope: null, support: null, filter: "todo", progress: "mine" };
   const u = STORE.ui.eval;
   if (u.scope) u.scope = u.scope.filter((id) => studyById(id));
   if (u.item && !itemContext(u.item)) { u.item = null; u.view = "home"; }
@@ -2750,6 +2750,13 @@ function stageIcon(stage) {
 }
 function cellGlyph(st) { return `<span class="cell-glyph ${st}" aria-hidden="true"></span>`; }
 function stageLabel(st) { return { none: "Not started", started: "In progress", common: "Common scores in, checks left", complete: "Complete" }[st]; }
+const STAGE_RANK = { none: 0, started: 1, common: 2, complete: 3 };
+function strongerStage(a, b) { return (STAGE_RANK[b] || 0) > (STAGE_RANK[a] || 0) ? b : a; }
+/* Team mode: one cell reflects the furthest progress reached by any reviewer in this lane. */
+function laneStage(itemIdStr, lane) {
+  const revs = reviewsFor(itemIdStr).filter((x) => lane === "all" || x.lane === lane);
+  return revs.reduce((best, x) => strongerStage(best, reviewStage(x.r)), "none");
+}
 
 const Evaluate = {
   render() {
@@ -2761,9 +2768,12 @@ const Evaluate = {
   home(u) {
     const items = queueItems();
     const mine = items.map((id) => ({ id, st: reviewStage(myReview(id)) }));
-    const stOf = Object.fromEntries(mine.map((x) => [x.id, x.st]));
+    const mineOf = Object.fromEntries(mine.map((x) => [x.id, x.st]));
+    const mode = u.progress || "mine";
+    const lane = STORE.reviewer.lane === "human" ? "human" : STORE.reviewer.lane;
+    const stOf = mode === "team" ? Object.fromEntries(items.map((id) => [id, laneStage(id, lane)])) : mineOf;
     const next = mine.find((x) => x.st === "started" || x.st === "common") || mine.find((x) => x.st === "none");
-    const count = (st) => mine.filter((x) => x.st === st).length;
+    const count = (st) => items.filter((id) => stOf[id] === st).length;
     const done = count("complete"), half = count("common") + count("started"), todo = count("none");
     const nameMissing = STORE.reviewer.lane === "human" && !STORE.reviewer.name.trim();
     const blind = blindInterviews(items);
@@ -2777,6 +2787,7 @@ const Evaluate = {
             ? `<div class="row"><button class="btn primary" data-action="open-item" data-id="${esc(next.id)}">${next.st === "none" ? "Start" : "Resume"} ${anonCode(next.id)}</button>
                <span class="small" style="color:#b7b4d0">${next.st === "none" ? `Next in ${orderLabel}` : stageLabel(next.st)} · Interview ${interviewNumber(next.id, blind)}, Q${parseItem(next.id).i + 1}</span></div>`
             : `<p>Every response in your queue is complete. Open Compare results to see how the arms differ.</p>`}
+          ${mode === "team" ? `<p class="tiny" style="color:#8f8cae">Markers in the matrix below now show team-wide progress across all human reviewers. The Continue button still follows your own queue.</p>` : ""}
           <p class="tiny" style="color:#8f8cae">Interviews are numbered at random for you, and condition labels, the journey, other reviewers' scores and automated notes stay hidden until the final implementation pass.</p>
         </section>
 
@@ -2788,6 +2799,8 @@ const Evaluate = {
           <div class="spread" style="margin-bottom:14px">
             <div><h3>Your assignments</h3><p class="tray-hint" style="margin:2px 0 0">${(u.qview || "grid") === "grid" ? "Each cell is one response. Select a cell to score it." : "Grouped by question. Select a response to score it."}</p></div>
             <div class="row">
+              <span class="small faint">Cell status</span>
+              <div class="seg" role="group" aria-label="Cell status source">${[["mine", "My marks"], ["team", "Team marks"]].map(([k, l]) => `<button data-action="qprogress" data-k="${k}" aria-pressed="${(u.progress || "mine") === k}">${l}</button>`).join("")}</div>
               <span class="small faint">Work</span>
               <div class="seg" role="group" aria-label="Review order">${[["random", "Random"], ["question", "By question"], ["interview", "By interview"]].map(([k, l]) => `<button data-action="qorder" data-k="${k}" aria-pressed="${(u.order || "random") === k}">${l}</button>`).join("")}</div>
               <div class="seg" role="group" aria-label="View">${[["grid", "Grid"], ["list", "List"]].map(([k, l]) => `<button data-action="qview" data-k="${k}" aria-pressed="${(u.qview || "grid") === k}">${l}</button>`).join("")}</div>
@@ -2909,6 +2922,10 @@ const Evaluate = {
     const stage = reviewStage(rev);
     const items = queueItems(); const pos = items.indexOf(u.item);
     const locked = !!rev.commonSubmittedAt;
+    const run = it.run;
+    const persona = PERSONAS.find((p) => p.id === run.cfg.persona);
+    const cyc = run.cfg.arm === "grounded" ? DATA.cycles[run.cfg.journey] : null;
+    const cycleName = cyc ? cyc.short_title.replace(/^Cycle \d: /, "") : "";
     return `<div class="spread" style="margin-bottom:16px">
         <div class="row"><button class="btn ghost" data-action="eval-home">← Queue</button><h2>${anonCode(u.item)}</h2><span class="chip">Interview ${interviewNumber(u.item, blindInterviews(queueSet()))}, Q${it.i + 1}</span><span class="chip">${stageLabel(stage)}</span></div>
         <div class="row"><span class="small faint">${pos >= 0 ? `${pos + 1} of ${items.length}` : "Outside your current queue"}</span>
@@ -2917,8 +2934,20 @@ const Evaluate = {
       </div>
       <div class="scoring">
         <div class="answer-col">
+          <section class="panel panel-pad">
+            <div class="spread"><h3>This interview setup</h3><span class="small faint">Fixed across Q1-Q7</span></div>
+            <div class="row wrap" style="margin-top:8px">
+              <span class="chip focus">${esc(productOf(run.cfg.product).short)}</span>
+              <span class="chip line">${esc(persona ? persona.variant : run.cfg.persona)}</span>
+              <span class="chip ${run.cfg.arm === "grounded" ? "grnd" : "base"}">${run.cfg.arm === "grounded" ? "Grounded" : "Baseline"}</span>
+              ${cyc ? `<span class="chip line">${esc(cycleName)}</span>` : ""}
+              ${cyc ? `<span class="chip line">${esc(DETAIL[run.cfg.detail].name)} · ${esc(TIMING[run.cfg.timing].name.toLowerCase())}</span>` : ""}
+            </div>
+            <p class="tiny faint" style="margin-top:8px">What changes each question: the question text (and screen when present) plus the live state cue. The approved profile and product pack stay the same for this interview.</p>
+          </section>
           <section class="panel qbox">
             <div class="qlabel">Question ${it.i + 1} of 7 · ${isScreen(it.q) ? "shown with a product screen" : "topic-only, no screen"}</div>
+            <div class="tiny faint" style="margin:4px 0 10px">${run.cfg.arm === "grounded" ? `Current cue: <code>${esc(it.turn.state_before)}</code>` : "Baseline interview: no journey cue applied."}</div>
             <div class="row" style="align-items:flex-start;gap:14px"><p class="grow">${esc(it.q.question)}</p>
               ${isScreen(it.q) ? `<img class="thumb" src="${it.q.screenshot_data_uri}" alt="Product screen" data-action="zoom" data-pid="${it.run.cfg.product}" data-i="${it.i}"/>` : ""}</div>
           </section>
@@ -3014,6 +3043,7 @@ const Evaluate = {
     App.on("eval-home", () => { evalUi().view = "home"; save(); });
     App.on("qorder", (el) => { evalUi().order = el.dataset.k; save(); });
     App.on("qview", (el) => { evalUi().qview = el.dataset.k; save(); });
+    App.on("qprogress", (el) => { evalUi().progress = el.dataset.k; save(); });
     App.on("qgroup", (el) => { const u = evalUi(); u.open_groups = u.open_groups || {}; const k = el.dataset.k; u.open_groups[k] = u.open_groups[k] === false; save(); });
     App.on("scope-all", (el) => {
       const u = evalUi(); const ids = Object.values(allStudies()).filter((s) => s.product === el.dataset.p && s.baselineRuns.length).map((s) => s.id);
