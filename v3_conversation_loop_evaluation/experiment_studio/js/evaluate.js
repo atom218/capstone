@@ -54,6 +54,19 @@ function stageIcon(stage) {
 }
 function cellGlyph(st) { return `<span class="cell-glyph ${st}" aria-hidden="true"></span>`; }
 function stageLabel(st) { return { none: "Not started", started: "In progress", common: "Common scores in, checks left", complete: "Complete" }[st]; }
+function reviewerNameFromKey(ek) { return ek && ek.startsWith("human:") ? (ek.slice(6).trim() || "Reviewer") : ek || "Reviewer"; }
+function fmtScore(v) { return v === undefined || v === null ? "–" : v === "na" ? "N/A" : String(v); }
+function humanReviewsForItem(itemIdStr) {
+  return reviewsFor(itemIdStr)
+    .filter((x) => x.lane === "human")
+    .map((x) => ({ ...x, name: reviewerNameFromKey(x.ek), st: reviewStage(x.r) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+function teammateHover(itemIdStr) {
+  const hs = humanReviewsForItem(itemIdStr);
+  if (!hs.length) return "No teammate reviews yet";
+  return "Team: " + hs.map((x) => `${x.name} (${stageLabel(x.st).toLowerCase()})`).join(", ");
+}
 const STAGE_RANK = { none: 0, started: 1, common: 2, complete: 3 };
 function strongerStage(a, b) { return (STAGE_RANK[b] || 0) > (STAGE_RANK[a] || 0) ? b : a; }
 /* Team mode: one cell reflects the furthest progress reached by any reviewer in this lane. */
@@ -162,7 +175,7 @@ const Evaluate = {
                 const id = itemId(iv.runId, i);
                 if (!set.has(id)) return `<td><span class="cell-glyph absent" aria-hidden="true"></span></td>`;
                 const st = stOf[id];
-                return `<td><button class="cell${next && next.id === id ? " is-next" : ""}" data-action="open-item" data-id="${esc(id)}" title="${anonCode(id)} · Interview ${iv.n}, Q${i + 1} · ${stageLabel(st)}" aria-label="${anonCode(id)}, interview ${iv.n}, question ${i + 1}, ${stageLabel(st)}">${cellGlyph(st)}</button></td>`;
+                return `<td><button class="cell${next && next.id === id ? " is-next" : ""}" data-action="open-item" data-id="${esc(id)}" title="${anonCode(id)} · Interview ${iv.n}, Q${i + 1} · ${stageLabel(st)} · ${esc(teammateHover(id))}" aria-label="${anonCode(id)}, interview ${iv.n}, question ${i + 1}, ${stageLabel(st)}">${cellGlyph(st)}</button></td>`;
               }).join("")}
               <td class="tot"><div class="rowbar"><i style="width:${(100 * rowDone) / Math.max(1, ids.length)}%"></i></div><span class="tiny faint">${rowDone}/${ids.length}</span></td></tr>`;
           }).join("")}</tbody>
@@ -230,6 +243,8 @@ const Evaluate = {
     const persona = PERSONAS.find((p) => p.id === run.cfg.persona);
     const cyc = run.cfg.arm === "grounded" ? DATA.cycles[run.cfg.journey] : null;
     const cycleName = cyc ? cyc.short_title.replace(/^Cycle \d: /, "") : "";
+    const teamRows = humanReviewsForItem(u.item);
+    const me = (STORE.reviewer.name || "").trim();
     return `<div class="spread" style="margin-bottom:16px">
         <div class="row"><button class="btn ghost" data-action="eval-home">← Queue</button><h2>${anonCode(u.item)}</h2><span class="chip">Interview ${interviewNumber(u.item, blindInterviews(queueSet()))}, Q${it.i + 1}</span><span class="chip">${stageLabel(stage)}</span></div>
         <div class="row"><span class="small faint">${pos >= 0 ? `${pos + 1} of ${items.length}` : "Outside your current queue"}</span>
@@ -248,6 +263,19 @@ const Evaluate = {
               ${cyc ? `<span class="chip line">${esc(DETAIL[run.cfg.detail].name)} · ${esc(TIMING[run.cfg.timing].name.toLowerCase())}</span>` : ""}
             </div>
             <p class="tiny faint" style="margin-top:8px">What changes each question: the question text (and screen when present) plus the live state cue. The approved profile and product pack stay the same for this interview.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="spread"><h3>Team evaluations on this response</h3><span class="small faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
+            ${teamRows.length ? `<div class="stack" style="margin-top:8px">${teamRows.map((x) => {
+              const mineTag = me && x.name === me ? " · you" : "";
+              const common = COMMON.map((c) => `${c.id}:${fmtScore(scoreVal(x.r, c.id))}`).join(" ");
+              const impl = IMPL.map((c) => `${c.id}:${fmtScore(scoreVal(x.r, c.id))}`).join(" ");
+              return `<div class="note focus small">
+                <div class="spread"><b>${esc(x.name)}${mineTag}</b><span class="faint">${stageLabel(x.st)}</span></div>
+                <div class="tiny" style="margin-top:4px"><b>Common:</b> ${esc(common)}</div>
+                <div class="tiny" style="margin-top:2px"><b>Implementation:</b> ${esc(impl)}</div>
+              </div>`;
+            }).join("")}</div>` : `<p class="tiny faint" style="margin-top:8px">No human reviewer has scored this response yet.</p>`}
           </section>
           <section class="panel qbox">
             <div class="qlabel">Question ${it.i + 1} of 7 · ${isScreen(it.q) ? "shown with a product screen" : "topic-only, no screen"}</div>
@@ -357,6 +385,7 @@ const Evaluate = {
     App.on("qfilter", (el) => { evalUi().filter = el.dataset.f; save(); });
     App.on("lane", (el) => { STORE.reviewer.lane = el.dataset.lane; save(); });
     App.on("scope", (el) => { const u = evalUi(); const id = el.dataset.study; u.scope = u.scope.includes(id) ? u.scope.filter((x) => x !== id) : [...u.scope, id]; save(); });
+    App.on("refresh-team", () => { App.render(); });
     App.on("item-step", (el) => {
       const u = evalUi(); const items = queueItems(); const pos = items.indexOf(u.item);
       const n = items[pos + Number(el.dataset.d)]; if (n) { u.item = n; u.support = null; const r = myReview(n); u.open = r && r.commonSubmittedAt && !r.implSubmittedAt ? IMPL[0].id : COMMON[0].id; save(); window.scrollTo(0, 0); }
