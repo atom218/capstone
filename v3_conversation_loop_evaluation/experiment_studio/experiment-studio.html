@@ -1635,7 +1635,13 @@ function twinRail(opts) {
   svg += `</svg>`;
   return svg;
 }
-function fmtNum(v) { return v == null ? "–" : Number.isInteger(v) ? String(v) : v.toFixed(1); }
+function fmtNum(v) {
+  if (v == null) return "–";
+  if (v === "na" || v === "n/a") return "N/A";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
 
 /* ---------------- toast, modal, drawer ---------------- */
 function toast(msg) {
