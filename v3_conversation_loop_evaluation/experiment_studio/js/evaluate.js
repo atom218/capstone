@@ -141,8 +141,15 @@ const Evaluate = {
       <aside class="stack">
         <section class="panel panel-pad stack">
           <h3>Reviewing as</h3>
-          <div class="seg" role="group" aria-label="Reviewer lane">${[["human", "Human reviewer"], ["jev", "Jev"]].map(([k, l]) => `<button data-action="lane" data-lane="${k}" aria-pressed="${STORE.reviewer.lane === k}">${l}</button>`).join("")}</div>
-          ${STORE.reviewer.lane === "human" ? `<div class="field"><label for="revName">Your name</label><input id="revName" data-bind="reviewer-name" value="${esc(STORE.reviewer.name)}" placeholder="First name"/></div>` : `<p class="small muted">Scores entered here are filed under Jev.</p>`}
+          <div class="seg" role="group" aria-label="Reviewer lane">${[["human", "Human reviewer"], ["jev", "Jev"], ["llm", "LLM judge"]].map(([k, l]) => `<button data-action="lane" data-lane="${k}" aria-pressed="${STORE.reviewer.lane === k}">${l}</button>`).join("")}</div>
+          ${STORE.reviewer.lane === "human"
+            ? `<div class="field"><label for="revName">Your name</label><input id="revName" data-bind="reviewer-name" value="${esc(STORE.reviewer.name)}" placeholder="First name"/></div>`
+            : STORE.reviewer.lane === "jev"
+              ? `<p class="small muted">Scores entered here are filed under Jev.</p>`
+              : `<div class="stack">
+                  <p class="small muted">Use this lane to run automated scoring. API key and endpoint are set in Model connection.</p>
+                  <div class="row"><button class="btn sm" data-action="conn">Model connection / API key</button>${connReady() ? `<button class="btn sm primary" data-action="judge-run">Run now</button>` : ""}</div>
+                </div>`}
         </section>
         <section class="panel panel-pad">
           <h3 style="margin-bottom:10px">Queue coverage by evaluator</h3>
@@ -157,6 +164,7 @@ const Evaluate = {
         <section class="panel panel-pad stack">
           <h3>LLM judge</h3>
           <p class="small muted">Scores every response in this queue with the same 0-3 rubric and then writes a short overall summary per interview.</p>
+          <div class="row"><button class="btn ghost sm" data-action="conn">Model connection / API key</button></div>
           ${JUDGE.running ? `<div class="row"><div class="grow"><div class="lane"><span class="small">Scoring</span><div class="bar"><i style="width:${(100 * JUDGE.done) / Math.max(1, JUDGE.total)}%"></i></div><span class="small">${JUDGE.done}/${JUDGE.total}</span></div></div><button class="btn sm" data-action="judge-stop">Stop</button></div>`
             : `<button class="btn" data-action="judge-run">${connReady() ? "Run judge on all queue items" : "Connect a model to run the judge"}</button>`}
           ${JUDGE.error ? `<div class="note warn small">${esc(JUDGE.error)}</div>` : ""}
@@ -425,6 +433,7 @@ const Evaluate = {
     App.on("open-crit", (el) => { const u = evalUi(); u.open = u.open === el.dataset.c ? null : el.dataset.c; save(); });
     App.on("support", (el) => { const u = evalUi(); u.support = u.support === el.dataset.k ? null : el.dataset.k; save(); });
     App.on("score", (el) => {
+      if (STORE.reviewer.lane === "llm") { toast("Switch to Human or Jev to score manually. Use LLM judge controls in the queue view."); return; }
       if (STORE.reviewer.lane === "human" && !STORE.reviewer.name.trim()) { toast("Add your name in the queue view first"); return; }
       const u = evalUi(); const rev = myReview(u.item, true); const c = el.dataset.c;
       if (!ALL_CRIT.some((criterion) => criterion.id === c) || criterionLocked(rev, c)) return;

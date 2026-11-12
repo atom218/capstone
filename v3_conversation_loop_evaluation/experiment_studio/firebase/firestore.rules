@@ -5,7 +5,7 @@ service cloud.firestore {
     // Replace these values for your team deployment.
     function passcode() { return "REPLACE_WITH_TEAM_PASSCODE"; }
     function maxLen(v, n) { return v is string && v.size() <= n; }
-    function reviewsOk(p) { return p.keys().hasOnly(["reviews", "observations", "liveRuns", "liveStudies"]); }
+    function payloadOk(p) { return p.keys().hasOnly(["reviews", "observations", "liveRuns", "liveStudies", "judgeSummaries"]); }
 
     match /studioWorkspaces/{workspaceId} {
       // Team reads are public for shared dashboards.
@@ -19,7 +19,7 @@ service cloud.firestore {
         && request.resource.data.schemaVersion == 1
         && maxLen(request.resource.data.updatedBy, 120)
         && request.resource.data.passcode == passcode()
-        && reviewsOk(request.resource.data.payload);
+        && payloadOk(request.resource.data.payload);
 
       allow delete: if false;
     }

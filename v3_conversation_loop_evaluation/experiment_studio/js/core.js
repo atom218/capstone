@@ -295,6 +295,17 @@ function storeSyncSlice() {
     judgeSummaries: STORE.judgeSummaries || {},
   };
 }
+function cloudPayloadSlice() {
+  // Keep cloud payload compatible with current deployed Firestore rules.
+  // Judge summaries stay local/exportable until rules are widened.
+  const s = storeSyncSlice();
+  return {
+    reviews: s.reviews,
+    observations: s.observations,
+    liveRuns: s.liveRuns,
+    liveStudies: s.liveStudies,
+  };
+}
 function cloneObj(x) { return safeJson(JSON.stringify(x), {}); }
 function reviewStamp(r) {
   if (!r || typeof r !== "object") return "";
@@ -449,7 +460,7 @@ const CloudSync = {
     if (this.pushBusy) { this.pushPending = true; return; }
     this.pushBusy = true;
     try {
-      const local = storeSyncSlice();
+      const local = cloudPayloadSlice();
       const migrationId = opts.migrationId || null;
       await this.db.runTransaction(async (tx) => {
         const snap = await tx.get(this.docRef);
