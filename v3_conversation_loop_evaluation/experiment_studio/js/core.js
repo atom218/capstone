@@ -171,6 +171,7 @@ function loadStore() {
   s.draft = s.draft || null;          // design in progress
   s.ui = s.ui || {};
   s.conn = s.conn || null;
+  s.judgeSummaries = s.judgeSummaries || {}; // judgeSummaries[llmKey][runId]
   const defaults = window.STUDIO_CLOUD_DEFAULT || {};
   const firebase = defaults.firebase || {};
   s.cloud = s.cloud || {};
@@ -235,6 +236,7 @@ function storeSyncSlice() {
     observations: STORE.observations || [],
     liveRuns: STORE.liveRuns || {},
     liveStudies: STORE.liveStudies || {},
+    judgeSummaries: STORE.judgeSummaries || {},
   };
 }
 function cloneObj(x) { return safeJson(JSON.stringify(x), {}); }
@@ -279,6 +281,17 @@ function mergeObservations(base, incoming) {
   });
   return Object.values(byId);
 }
+function mergeJudgeSummaries(base, incoming) {
+  const out = cloneObj(base || {});
+  Object.entries(incoming || {}).forEach(([ek, runs]) => {
+    out[ek] = out[ek] || {};
+    Object.entries(runs || {}).forEach(([rid, row]) => {
+      const curr = out[ek][rid];
+      out[ek][rid] = !curr || ((row && row.at) || "") > ((curr && curr.at) || "") ? row : curr;
+    });
+  });
+  return out;
+}
 function mergeSyncData(base, incoming) {
   const a = base || {};
   const b = incoming || {};
@@ -287,6 +300,7 @@ function mergeSyncData(base, incoming) {
     observations: mergeObservations(a.observations || [], b.observations || []),
     liveRuns: mergeObjMap(a.liveRuns || {}, b.liveRuns || {}, "createdAt"),
     liveStudies: mergeObjMap(a.liveStudies || {}, b.liveStudies || {}, "createdAt"),
+    judgeSummaries: mergeJudgeSummaries(a.judgeSummaries || {}, b.judgeSummaries || {}),
   };
 }
 function applySyncSlice(slice) {
@@ -298,6 +312,7 @@ function applySyncSlice(slice) {
   STORE.observations = merged.observations;
   STORE.liveRuns = merged.liveRuns;
   STORE.liveStudies = merged.liveStudies;
+  STORE.judgeSummaries = merged.judgeSummaries || {};
   return true;
 }
 const CloudSync = {
@@ -484,9 +499,28 @@ function configKey(cfg) {
     cfg.arm === "baseline" ? "-" : cfg.detail, cfg.arm === "baseline" ? "-" : cfg.timing, cfg.keep, cfg.profileFreq].join("|");
 }
 /* Model settings both arms must share. Saved v3 runs have none recorded (null), so they never count as a match for a new launch. */
-function modelSig(m) { return m && m.deployment ? [m.deployment, Number(m.temperature), Number(m.maxTokens), Number(m.top_p ?? 0.9)].join("|") : null; }
-function launchModel() { const c = getConn(); return { deployment: c.deployment, apiVersion: c.apiVersion, temperature: Number(c.temperature), maxTokens: Number(c.maxTokens), top_p: 0.9 }; }
-function modelLine(m) { return m && m.deployment ? `${m.deployment}, temperature ${m.temperature}, max ${m.maxTokens} tokens` : "not recorded"; }
+function modelSig(m) {
+  if (!m) return null;
+  const name = m.provider === "azure-anthropic" ? m.model : m.deployment;
+  return name ? [m.provider || "azure-openai", name, Number(m.temperature), Number(m.maxTokens), Number(m.top_p ?? 0.9)].join("|") : null;
+}
+function launchModel() {
+  const c = getConn();
+  return {
+    provider: c.provider || "azure-openai",
+    deployment: c.deployment,
+    model: c.model,
+    apiVersion: c.apiVersion,
+    temperature: Number(c.temperature),
+    maxTokens: Number(c.maxTokens),
+    top_p: 0.9,
+  };
+}
+function modelLine(m) {
+  if (!m) return "not recorded";
+  const name = m.provider === "azure-anthropic" ? m.model : m.deployment;
+  return name ? `${name}, temperature ${m.temperature}, max ${m.maxTokens} tokens` : "not recorded";
+}
 /* The shared policy both arms must agree on; a change here needs a new baseline. */
 function sharedKey(cfg) { return [cfg.product, cfg.persona, cfg.profileHash || "seed", cfg.keep, cfg.profileFreq].join("|"); }
 
@@ -803,16 +837,30 @@ function imageModal(uri, caption) {
 const CONN = { helper: null };
 function connDefaults() {
   const d = DATA.azure_default || {};
-  return { endpoint: d.endpoint || "", deployment: d.deployment || "gpt-4o", apiVersion: d.api_version || "2024-12-01-preview", key: "", temperature: 0.7, maxTokens: 360 };
+  return {
+    provider: "azure-openai",
+    endpoint: d.endpoint || "",
+    deployment: d.deployment || "gpt-4o",
+    model: "claude-3-5-sonnet",
+    apiVersion: d.api_version || "2024-12-01-preview",
+    key: "",
+    temperature: 0.7,
+    maxTokens: 360,
+  };
 }
 function getConn() {
   // Precedence: what the person saved in the dialog, then the team's .env (via run_studio.py), then built-in defaults.
-  const env = CONN.envConfig ? Object.fromEntries(["endpoint", "deployment", "apiVersion"].filter((k) => CONN.envConfig[k]).map((k) => [k, CONN.envConfig[k]])) : {};
+  const envKeys = ["provider", "endpoint", "deployment", "model", "apiVersion"];
+  const env = CONN.envConfig ? Object.fromEntries(envKeys.filter((k) => CONN.envConfig[k]).map((k) => [k, CONN.envConfig[k]])) : {};
   let c = { ...connDefaults(), ...env, ...(STORE.conn || {}) };
   try { const k = sessionStorage.getItem("experiment_studio_key"); if (k && !c.key) c.key = k; } catch (e) {}
   return c;
 }
-function connReady() { const c = getConn(); return !!(c.endpoint && c.deployment && (c.key || (CONN.helper && CONN.helper.hasKey))); }
+function connReady() {
+  const c = getConn();
+  const modelOk = c.provider === "azure-anthropic" ? !!c.model : !!c.deployment;
+  return !!(c.endpoint && modelOk && (c.key || (CONN.helper && CONN.helper.hasKey)));
+}
 function detectHelper() {
   if (!/^https?:$/.test(location.protocol)) return Promise.resolve();
   const base = helperBase();
@@ -844,17 +892,43 @@ function normEndpoint(e) {
   if (!/^https?:\/\//i.test(e)) e = "https://" + e;
   return e.replace(/\/openai(\/.*)?$/i, "").replace(/\/+$/, "");
 }
-async function chat(messages, { temperature, maxTokens, json, deployment, apiVersion } = {}) {
-  const c = { ...getConn(), ...(deployment ? { deployment } : {}), ...(apiVersion ? { apiVersion } : {}) };
-  const url = `${normEndpoint(c.endpoint)}/openai/deployments/${encodeURIComponent(c.deployment)}/chat/completions?api-version=${encodeURIComponent(c.apiVersion)}`;
-  const payload = { messages, temperature: temperature ?? c.temperature, top_p: 0.9, max_tokens: maxTokens ?? c.maxTokens };
-  if (json) payload.response_format = { type: "json_object" };
+function extractChatText(body) {
+  const msg = body && body.choices && body.choices[0] && body.choices[0].message && body.choices[0].message.content;
+  if (Array.isArray(msg)) return msg.map((x) => (typeof x === "string" ? x : x && x.text ? x.text : "")).join("").trim();
+  return String(msg || "").trim();
+}
+function judgeLaneKey(cfg) {
+  const tag = cfg.provider === "azure-anthropic" ? (cfg.model || "anthropic") : (cfg.deployment || "judge");
+  return `llm:${tag}`;
+}
+function parseJsonLoose(text) {
+  const t = String(text || "").trim();
+  const direct = safeJson(t, null); if (direct) return direct;
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(t);
+  if (fenced) { const j = safeJson(fenced[1], null); if (j) return j; }
+  const first = t.indexOf("{"), last = t.lastIndexOf("}");
+  if (first >= 0 && last > first) return safeJson(t.slice(first, last + 1), {});
+  return {};
+}
+async function chat(messages, { temperature, maxTokens, json, deployment, apiVersion, provider, model } = {}) {
+  const c = { ...getConn(), ...(deployment ? { deployment } : {}), ...(model ? { model } : {}), ...(apiVersion ? { apiVersion } : {}), ...(provider ? { provider } : {}) };
+  let url, payload;
+  if (c.provider === "azure-anthropic") {
+    // Azure AI Model Inference endpoint (for Anthropic and other non-OpenAI models).
+    const v = c.apiVersion || "2024-05-01-preview";
+    url = `${normEndpoint(c.endpoint)}/models/chat/completions?api-version=${encodeURIComponent(v)}`;
+    payload = { model: c.model, messages, temperature: temperature ?? c.temperature, max_tokens: maxTokens ?? c.maxTokens };
+  } else {
+    url = `${normEndpoint(c.endpoint)}/openai/deployments/${encodeURIComponent(c.deployment)}/chat/completions?api-version=${encodeURIComponent(c.apiVersion)}`;
+    payload = { messages, temperature: temperature ?? c.temperature, top_p: 0.9, max_tokens: maxTokens ?? c.maxTokens };
+    if (json) payload.response_format = { type: "json_object" };
+  }
   const res = CONN.helper
     ? await fetch(helperBase() + "api/chat", { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key, ...(CONN.token ? { "X-Studio-Token": CONN.token } : {}) }, body: JSON.stringify({ url, payload }) })
     : await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key }, body: JSON.stringify(payload) });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.error ? body.error.message || JSON.stringify(body.error) : "no details returned"}`);
-  return { text: ((body.choices && body.choices[0] && body.choices[0].message.content) || "").trim(), usage: body.usage || null };
+  return { text: extractChatText(body), usage: body.usage || null };
 }
 function connModal(after) {
   const c = getConn();
@@ -864,9 +938,16 @@ function connModal(after) {
   const box = openLayer(`
     <div class="spread"><h2>Model connection</h2><button class="btn ghost sm" data-action="close-layer">Close</button></div>
     ${helperNote}
-    <div class="field"><label for="cEndpoint">Azure OpenAI endpoint</label><input id="cEndpoint" value="${esc(c.endpoint)}"/></div>
+    <div class="field"><label for="cProvider">Provider</label>
+      <select id="cProvider">
+        <option value="azure-openai" ${c.provider === "azure-openai" ? "selected" : ""}>Azure OpenAI</option>
+        <option value="azure-anthropic" ${c.provider === "azure-anthropic" ? "selected" : ""}>Anthropic on Azure AI</option>
+      </select>
+    </div>
+    <div class="field"><label for="cEndpoint">${c.provider === "azure-anthropic" ? "Azure AI endpoint" : "Azure OpenAI endpoint"}</label><input id="cEndpoint" value="${esc(c.endpoint)}"/></div>
     <div class="slot-pair">
-      <div class="field"><label for="cDeployment">Deployment</label><input id="cDeployment" value="${esc(c.deployment)}"/></div>
+      <div class="field"><label for="cDeployment">Deployment (Azure OpenAI)</label><input id="cDeployment" value="${esc(c.deployment)}"/></div>
+      <div class="field"><label for="cModel">Model (Anthropic on Azure AI)</label><input id="cModel" value="${esc(c.model || "")}" placeholder="claude-3-5-sonnet"/></div>
       <div class="field"><label for="cVersion">API version</label><input id="cVersion" value="${esc(c.apiVersion)}"/></div>
     </div>
     <div class="slot-pair">
@@ -877,7 +958,15 @@ function connModal(after) {
     <div class="row" style="justify-content:flex-end"><button class="btn primary" id="cSave">Save connection</button></div>`);
   box.querySelector("#cSave").onclick = () => {
     const v = (id) => box.querySelector(id).value.trim();
-    STORE.conn = { endpoint: v("#cEndpoint"), deployment: v("#cDeployment"), apiVersion: v("#cVersion"), temperature: Number(v("#cTemp")) || 0.7, maxTokens: Number(v("#cMax")) || 360 };
+    STORE.conn = {
+      provider: v("#cProvider") || "azure-openai",
+      endpoint: v("#cEndpoint"),
+      deployment: v("#cDeployment"),
+      model: v("#cModel"),
+      apiVersion: v("#cVersion"),
+      temperature: Number(v("#cTemp")) || 0.7,
+      maxTokens: Number(v("#cMax")) || 360,
+    };
     try { sessionStorage.setItem("experiment_studio_key", v("#cKey")); } catch (e) {}
     persist(true); closeLayer(); toast("Connection saved");
     if (after) after(); else App.render();
@@ -999,15 +1088,29 @@ function judgePrompt(item, pass) {
     { role: "user", content: `${ctx}\n\nCriteria:\n${lines}\n\nReturn JSON: {"scores": {"<criterion id>": {"v": 0|1|2|3|"na", "evidence": ["exact quote"], "note": "one sentence"}}, "factual_concern": "" }` },
   ];
 }
+function judgeRunSummaryPrompt(run, items) {
+  const qs = questionsOf(run.cfg.product);
+  const block = items.map((it) => {
+    const line = COMMON.map((c) => `${c.id}:${fmtNum(scoreVal(it.rev, c.id))}`).join(", ");
+    return `Q${it.i + 1}: ${qs[it.i].question}\nReply: ${it.turn.reply}\nScores: ${line}`;
+  }).join("\n\n");
+  const setup = run.cfg.arm === "grounded"
+    ? `Grounded interview. Cycle: ${DATA.cycles[run.cfg.journey].short_title}. Detail: ${DETAIL[run.cfg.detail].name}. Timing: ${TIMING[run.cfg.timing].name}.`
+    : "Baseline interview (no journey cues).";
+  return [
+    { role: "system", content: "You are summarizing one synthetic interview for a UX research team." },
+    { role: "user", content: `Write 3-5 concise lines with: (1) key strengths, (2) key weaknesses, (3) one design recommendation.\n\nInterview setup:\n${setup}\nPersona variant: ${PERSONAS.find((p) => p.id === run.cfg.persona).variant}\n\nQuestion-level evidence:\n${block}` },
+  ];
+}
 function itemContext(id) {
   const { runId, i } = parseItem(id);
   const run = runById(runId); if (!run || !Number.isInteger(i) || !run.turns[i]) return null;
   const q = questionsOf(run.cfg.product)[i];
   return { id, run, i, q, turn: run.turns[i] };
 }
-async function judgeItem(id, deployment) {
+async function judgeItem(id, judgeCfg) {
   const item = itemContext(id); if (!item) return;
-  const ek = `llm:${deployment}`;
+  const ek = judgeLaneKey(judgeCfg);
   STORE.reviews[ek] = STORE.reviews[ek] || {};
   const rev = STORE.reviews[ek][id] || { scores: {}, flags: {}, startedAt: new Date().toISOString() };
   const apply = (out, crits) => {
@@ -1019,16 +1122,37 @@ async function judgeItem(id, deployment) {
     });
     if (out && out.factual_concern) rev.flags.factual = { on: true, note: out.factual_concern };
   };
-  const r1 = await chat(judgePrompt(item, "common"), { temperature: 0, maxTokens: 900, json: true });
-  apply(safeJson(r1.text, {}), COMMON);
+  const r1 = await chat(judgePrompt(item, "common"), { temperature: 0, maxTokens: 900, json: judgeCfg.provider !== "azure-anthropic", deployment: judgeCfg.deployment, model: judgeCfg.model, apiVersion: judgeCfg.apiVersion, provider: judgeCfg.provider });
+  apply(parseJsonLoose(r1.text), COMMON);
   rev.commonSubmittedAt = new Date().toISOString();
   rev.commonAudit = Object.fromEntries(COMMON.map((c) => [c.id, scoreVal(rev, c.id)]));
   if (item.run.cfg.arm === "grounded") {
-    const r2 = await chat(judgePrompt(item, "impl"), { temperature: 0, maxTokens: 700, json: true });
-    apply(safeJson(r2.text, {}), IMPL);
+    const r2 = await chat(judgePrompt(item, "impl"), { temperature: 0, maxTokens: 700, json: judgeCfg.provider !== "azure-anthropic", deployment: judgeCfg.deployment, model: judgeCfg.model, apiVersion: judgeCfg.apiVersion, provider: judgeCfg.provider });
+    apply(parseJsonLoose(r2.text), IMPL);
   } else IMPL.forEach((c) => (rev.scores[c.id] = { v: "na", evidence: [], note: "Baseline: no journey supplied." }));
   rev.implSubmittedAt = new Date().toISOString();
+  rev.updatedAt = rev.implSubmittedAt;
   STORE.reviews[ek][id] = rev;
+  persist(true);
+}
+async function judgeInterviewSummary(runId, judgeCfg) {
+  const run = runById(runId); if (!run) return;
+  const ek = judgeLaneKey(judgeCfg);
+  const ids = run.turns.map((_, i) => itemId(runId, i)).filter((id) => STORE.reviews[ek] && STORE.reviews[ek][id]);
+  if (!ids.length) return;
+  const items = ids.map((id) => {
+    const it = itemContext(id);
+    return { ...it, rev: STORE.reviews[ek][id] };
+  });
+  const res = await chat(judgeRunSummaryPrompt(run, items), {
+    temperature: 0.2, maxTokens: 320, deployment: judgeCfg.deployment, model: judgeCfg.model, apiVersion: judgeCfg.apiVersion, provider: judgeCfg.provider,
+  });
+  STORE.judgeSummaries[ek] = STORE.judgeSummaries[ek] || {};
+  STORE.judgeSummaries[ek][runId] = {
+    text: res.text || "",
+    at: new Date().toISOString(),
+    model: judgeCfg.provider === "azure-anthropic" ? judgeCfg.model : judgeCfg.deployment,
+  };
   persist(true);
 }
 
@@ -1078,7 +1202,7 @@ function download(name, text, type = "application/json") {
   a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 function exportAll() {
-  const out = { exported_at: new Date().toISOString(), loop: LOOP_VERSION, reviews: STORE.reviews, observations: STORE.observations, liveRuns: STORE.liveRuns, liveStudies: STORE.liveStudies };
+  const out = { exported_at: new Date().toISOString(), loop: LOOP_VERSION, reviews: STORE.reviews, observations: STORE.observations, liveRuns: STORE.liveRuns, liveStudies: STORE.liveStudies, judgeSummaries: STORE.judgeSummaries };
   download(`experiment-studio-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(out, null, 2));
 }
 function exportScoresCsv() {
@@ -1130,7 +1254,18 @@ function cleanCfg(c) {
 function cleanRun(id, r) {
   if (!SAFE_ID.test(id) || !r || typeof r !== "object" || SAVED_RUNS[id]) return null;
   const cfg = cleanCfg(r.cfg); if (!cfg || !Array.isArray(r.turns) || r.turns.length !== questionsOf(cfg.product).length) return null;
-  const m = r.model && typeof r.model === "object" && isStr(r.model.deployment, 100) ? { deployment: r.model.deployment, apiVersion: isStr(r.model.apiVersion, 40) ? r.model.apiVersion : "", temperature: Number(r.model.temperature) || 0, maxTokens: Number(r.model.maxTokens) || 0, top_p: Number(r.model.top_p ?? 0.9) } : null;
+  const modelName = r.model && typeof r.model === "object"
+    ? (isStr(r.model.deployment, 100) ? r.model.deployment : isStr(r.model.model, 100) ? r.model.model : "")
+    : "";
+  const m = modelName ? {
+    provider: isStr(r.model.provider, 40) ? r.model.provider : "azure-openai",
+    deployment: isStr(r.model.deployment, 100) ? r.model.deployment : "",
+    model: isStr(r.model.model, 100) ? r.model.model : "",
+    apiVersion: isStr(r.model.apiVersion, 40) ? r.model.apiVersion : "",
+    temperature: Number(r.model.temperature) || 0,
+    maxTokens: Number(r.model.maxTokens) || 0,
+    top_p: Number(r.model.top_p ?? 0.9),
+  } : null;
   return {
     id, origin: "live", cfg, profileText: cfg.profileText, replicate: Number(r.replicate) || 1, createdAt: isStr(r.createdAt, 40) ? r.createdAt : null,
     system: buildCard(cfg.profileText || DATA.persona_texts[cfg.persona], rulesFor(cfg)), model: m,
@@ -1180,6 +1315,14 @@ function importAll(file) {
     });
     const have = new Set(STORE.observations.map((o) => o.id));
     (Array.isArray(j.observations) ? j.observations : []).forEach((o) => { const c = cleanObservation(o); if (c && !have.has(c.id)) { STORE.observations.push(c); added++; } else if (!c) skipped++; });
+    Object.entries(j.judgeSummaries || {}).forEach(([ek, runs]) => {
+      STORE.judgeSummaries[ek] = STORE.judgeSummaries[ek] || {};
+      Object.entries(runs || {}).forEach(([rid, row]) => {
+        if (!SAFE_ID.test(rid) || !row || !isStr(row.text, 12000)) { skipped++; return; }
+        STORE.judgeSummaries[ek][rid] = { text: row.text, at: isStr(row.at, 40) ? row.at : new Date().toISOString(), model: isStr(row.model, 120) ? row.model : "" };
+        added++;
+      });
+    });
     persist(true); App.render();
     toast(skipped ? `Imported ${added} items. Skipped ${skipped} that were malformed or unrecognized.` : `Imported ${added} items`);
   };

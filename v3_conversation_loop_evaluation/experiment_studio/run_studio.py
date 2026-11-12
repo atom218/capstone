@@ -33,8 +33,10 @@ import build_studio  # noqa: E402
 
 ENV_FILES = [HERE / ".env", HERE.parent.parent / ".env"]
 CONFIG_VARS = {  # sent to the page so the connection dialog is prefilled; never the key
+    "STUDIO_MODEL_PROVIDER": "provider",
     "AZURE_OPENAI_ENDPOINT": "endpoint",
     "AZURE_OPENAI_DEPLOYMENT": "deployment",
+    "AZURE_ANTHROPIC_MODEL": "model",
     "AZURE_OPENAI_API_VERSION": "apiVersion",
     "STUDIO_FIREBASE_ENABLED": "firebaseEnabled",
     "STUDIO_FIREBASE_WORKSPACE_ID": "firebaseWorkspaceId",

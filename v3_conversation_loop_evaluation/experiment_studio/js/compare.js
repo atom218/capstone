@@ -277,7 +277,7 @@ const Compare = {
         <dt>Journey</dt><dd>${r.cfg.journey ? esc(DATA.cycles[r.cfg.journey].short_title) : "None"}</dd>
         <dt>Cue</dt><dd>${r.cfg.arm === "grounded" ? `${DETAIL[r.cfg.detail].name}, ${TIMING[r.cfg.timing].name.toLowerCase()}${r.legacyArm ? ` (v3 “${r.legacyArm}” arm)` : ""}` : "None"}</dd>
         <dt>Memory</dt><dd>${HISTORY[r.cfg.keep].name}; ${PROFILE_FREQ[r.cfg.profileFreq].name.toLowerCase()}</dd>
-        <dt>Model</dt><dd>${r.model ? `${esc(r.model.deployment)}, temperature ${r.model.temperature}, max ${r.model.maxTokens} tokens` : "Not recorded with the saved runs"}</dd>
+        <dt>Model</dt><dd>${esc(modelLine(r.model))}</dd>
         <dt>Versions</dt><dd class="small">persona ${r.versions.persona} · pack ${r.versions.pack} · journey ${esc(r.versions.journey)} · ${esc(r.versions.loop)}</dd>
       </dl></div>`).join("");
     return `<div class="drawer-head"><h2>Inspect the run</h2><button class="btn ghost sm" data-action="close-drawer">Close</button></div>

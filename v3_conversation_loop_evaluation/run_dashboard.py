@@ -1,4 +1,4 @@
-"""Serve the evaluation dashboard locally and relay its live calls to Azure OpenAI.
+"""Serve the evaluation dashboard locally and relay its live calls to Azure model endpoints.
 
 Use this when "Try It Live" shows "Failed to fetch": the browser never talks to
 Azure directly, so extensions, browser security settings and editor previews
@@ -44,9 +44,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except (ValueError, KeyError):
             return self._json(400, {"error": {"message": "Malformed request from the dashboard."}})
 
-        host = urllib.parse.urlparse(url).hostname or ""
-        if not url.startswith("https://") or not host.endswith(".openai.azure.com"):
-            return self._json(400, {"error": {"message": "The helper only forwards to https://<name>.openai.azure.com endpoints."}})
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.hostname or ""
+        allowed_host = (
+            host.endswith(".openai.azure.com")
+            or host.endswith(".services.ai.azure.com")
+            or host.endswith(".models.ai.azure.com")
+            or host.endswith(".inference.ai.azure.com")
+        )
+        allowed_path = parsed.path.startswith("/openai/") or parsed.path.startswith("/models/")
+        if not url.startswith("https://") or not allowed_host or not allowed_path:
+            return self._json(400, {"error": {"message": "The helper only forwards to Azure model endpoints under /openai/... or /models/..."}})
 
         key = self.headers.get("api-key") or os.environ.get("AZURE_OPENAI_API_KEY", "")
         req = urllib.request.Request(

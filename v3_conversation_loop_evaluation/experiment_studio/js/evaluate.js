@@ -145,13 +145,30 @@ const Evaluate = {
         ${this.scopePanel(u)}
         <section class="panel panel-pad stack">
           <h3>LLM judge</h3>
-          <p class="small muted">Scores every response in this queue with the same rubric, blinded the same way. Its results sit in their own lane.</p>
+          <p class="small muted">Scores every response in this queue with the same 0-3 rubric and then writes a short overall summary per interview.</p>
           ${JUDGE.running ? `<div class="row"><div class="grow"><div class="lane"><span class="small">Scoring</span><div class="bar"><i style="width:${(100 * JUDGE.done) / Math.max(1, JUDGE.total)}%"></i></div><span class="small">${JUDGE.done}/${JUDGE.total}</span></div></div><button class="btn sm" data-action="judge-stop">Stop</button></div>`
-            : `<button class="btn" data-action="judge-run">${connReady() ? "Run the LLM judge on this queue" : "Connect a model to run the judge"}</button>`}
+            : `<button class="btn" data-action="judge-run">${connReady() ? "Run judge on all queue items" : "Connect a model to run the judge"}</button>`}
           ${JUDGE.error ? `<div class="note warn small">${esc(JUDGE.error)}</div>` : ""}
+          ${this.judgeSummaryPanel(items)}
         </section>
       </aside>
     </div>`;
+  },
+  judgeSummaryPanel(items) {
+    const c = getConn();
+    const ek = judgeLaneKey(c);
+    const rows = [];
+    const seen = new Set();
+    items.forEach((id) => {
+      const { runId } = parseItem(id);
+      if (seen.has(runId)) return;
+      seen.add(runId);
+      const row = STORE.judgeSummaries[ek] && STORE.judgeSummaries[ek][runId];
+      if (!row || !row.text) return;
+      rows.push({ runId, row });
+    });
+    if (!rows.length) return `<p class="tiny faint">Interview-level summaries appear here after the batch judge run finishes.</p>`;
+    return `<div class="stack">${rows.map(({ runId, row }) => `<div class="note"><div class="small"><b>${esc(anonCode(runId + "#0").replace("Q1", "Interview"))}</b> · ${esc(fmtTime(row.at || ""))}</div><div class="small" style="white-space:pre-wrap;margin-top:4px">${esc(row.text)}</div></div>`).join("")}</div>`;
   },
 
   /* Questions down, blinded interviews across: the whole queue at a glance. */
@@ -508,16 +525,25 @@ function hideSelChip() { $$(".sel-chip").forEach((c) => c.remove()); }
 const JUDGE = { running: false, done: 0, total: 0, stop: false, error: null };
 async function runJudge() {
   const c = getConn(); const items = queueItems();
-  const ek = `llm:${c.deployment}`;
+  const ek = judgeLaneKey(c);
   const todo = items.filter((id) => !(STORE.reviews[ek] && STORE.reviews[ek][id] && STORE.reviews[ek][id].implSubmittedAt));
   Object.assign(JUDGE, { running: true, done: items.length - todo.length, total: items.length, stop: false, error: null });
   App.render();
   for (const id of todo) {
     if (JUDGE.stop) break;
-    try { await judgeItem(id, c.deployment); JUDGE.done++; }
+    try { await judgeItem(id, c); JUDGE.done++; }
     catch (err) { JUDGE.error = `Stopped at ${anonCode(id)}: ${err.message || err}`; break; }
     App.renderSoon();
   }
+  if (!JUDGE.stop && !JUDGE.error) {
+    const runIds = Array.from(new Set(items.map((id) => parseItem(id).runId)));
+    for (const runId of runIds) {
+      if (JUDGE.stop) break;
+      try { await judgeInterviewSummary(runId, c); }
+      catch (err) { JUDGE.error = `Summary failed at ${anonCode(runId + "#0").replace("Q1", "Interview")}: ${err.message || err}`; break; }
+      App.renderSoon();
+    }
+  }
   JUDGE.running = false; App.render();
-  if (!JUDGE.error) toast(JUDGE.stop ? "LLM judge stopped" : "LLM judge finished");
+  if (!JUDGE.error) toast(JUDGE.stop ? "LLM judge stopped" : "LLM judge finished (scores + interview summaries)");
 }
