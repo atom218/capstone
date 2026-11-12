@@ -959,7 +959,11 @@ function helperBase() { return location.pathname.includes("/experiment_studio/")
 function normEndpoint(e) {
   e = String(e || "").trim(); if (!e) return e;
   if (!/^https?:\/\//i.test(e)) e = "https://" + e;
-  return e.replace(/\/openai(\/.*)?$/i, "").replace(/\/+$/, "");
+  return e
+    .replace(/\/openai(\/.*)?$/i, "")
+    .replace(/\/anthropic\/v1\/messages(\/.*)?$/i, "")
+    .replace(/\/models\/chat\/completions(\/.*)?$/i, "")
+    .replace(/\/+$/, "");
 }
 function extractChatText(body) {
   const msg = body && body.choices && body.choices[0] && body.choices[0].message && body.choices[0].message.content;
@@ -1003,7 +1007,7 @@ function connModal(after) {
   const c = getConn();
   const helperNote = CONN.helper
     ? `<div class="note ok">Connected through the local helper${CONN.helper.hasKey ? ". It already has the team's API key from your .env file, so leave the key field empty." : ". No key was found in a .env file, so paste one below or add it to .env and restart."}</div>`
-    : `<div class="note warn">Live calls work most reliably through the local helper. In Terminal, run <code>python3 run_studio.py</code> from the <code>experiment_studio</code> folder and use the page it opens.</div>`;
+    : `<div class="note focus">Direct web mode is active (normal for the deployed team URL). Local helper is optional and only needed when running the app locally from your own machine.</div>`;
   const box = openLayer(`
     <div class="spread"><h2>Model connection</h2><button class="btn ghost sm" data-action="close-layer">Close</button></div>
     ${helperNote}

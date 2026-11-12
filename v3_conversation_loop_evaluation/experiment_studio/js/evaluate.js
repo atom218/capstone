@@ -85,6 +85,12 @@ function laneStage(itemIdStr, lane) {
   const revs = reviewsFor(itemIdStr).filter((x) => lane === "all" || x.lane === lane);
   return revs.reduce((best, x) => strongerStage(best, reviewStage(x.r)), "none");
 }
+function judgeQueueStats(items, cfg = getConn()) {
+  const ek = judgeLaneKey(cfg);
+  const doneSet = new Set(items.filter((id) => STORE.reviews[ek] && STORE.reviews[ek][id] && STORE.reviews[ek][id].implSubmittedAt));
+  const pending = items.filter((id) => !doneSet.has(id));
+  return { ek, total: items.length, done: doneSet.size, pending: pending.length, next: pending[0] || null };
+}
 
 const Evaluate = {
   render() {
@@ -95,6 +101,7 @@ const Evaluate = {
 
   home(u) {
     const items = queueItems();
+    const judge = judgeQueueStats(items);
     const mine = items.map((id) => ({ id, st: reviewStage(myReview(id)) }));
     const mineOf = Object.fromEntries(mine.map((x) => [x.id, x.st]));
     const mode = u.progress || "mine";
@@ -148,7 +155,8 @@ const Evaluate = {
               ? `<p class="small muted">Scores entered here are filed under Jev.</p>`
               : `<div class="stack">
                   <p class="small muted">Use this lane to run automated scoring. API key and endpoint are set in Model connection.</p>
-                  <div class="row"><button class="btn sm" data-action="conn">Model connection / API key</button>${connReady() ? `<button class="btn sm primary" data-action="judge-run">Run now</button>` : ""}</div>
+                  <p class="tiny faint">Queue: ${judge.total} items · Pending for this model: ${judge.pending}${judge.next ? ` · Next: ${esc(anonCode(judge.next))}` : ""}</p>
+                  <div class="row"><button class="btn sm" data-action="conn">Model connection / API key</button>${connReady() ? `<button class="btn sm primary" data-action="judge-run">Run now</button><button class="btn sm ghost" data-action="judge-run-force">Re-run all</button>` : ""}</div>
                 </div>`}
         </section>
         <section class="panel panel-pad">
@@ -164,10 +172,12 @@ const Evaluate = {
         <section class="panel panel-pad stack">
           <h3>LLM judge</h3>
           <p class="small muted">Scores every response in this queue with the same 0-3 rubric and then writes a short overall summary per interview.</p>
+          <p class="tiny faint">Model lane: ${esc(judge.ek.replace(/^llm:/, ""))} · Queue ${judge.total} · Pending ${judge.pending}</p>
           <div class="row"><button class="btn ghost sm" data-action="conn">Model connection / API key</button></div>
           ${JUDGE.running ? `<div class="row"><div class="grow"><div class="lane"><span class="small">Scoring</span><div class="bar"><i style="width:${(100 * JUDGE.done) / Math.max(1, JUDGE.total)}%"></i></div><span class="small">${JUDGE.done}/${JUDGE.total}</span></div></div><button class="btn sm" data-action="judge-stop">Stop</button></div>`
-            : `<button class="btn" data-action="judge-run">${connReady() ? "Run judge on all queue items" : "Connect a model to run the judge"}</button>`}
+            : `<div class="row wrap"><button class="btn" data-action="judge-run">${connReady() ? "Run judge on pending queue items" : "Connect a model to run the judge"}</button>${connReady() ? `<button class="btn ghost" data-action="judge-run-force">Run again on all items</button>` : ""}</div>`}
           ${JUDGE.error ? `<div class="note warn small">${esc(JUDGE.error)}</div>` : ""}
+          ${JUDGE.last ? `<div class="note small">${esc(JUDGE.last)}</div>` : ""}
           ${this.judgeSummaryPanel(items)}
         </section>
       </aside>
@@ -483,6 +493,7 @@ const Evaluate = {
       rev.implSubmittedAt = new Date().toISOString(); touch(rev); save();
     });
     App.on("judge-run", () => { if (!connReady()) return connModal(() => runJudge()); runJudge(); });
+    App.on("judge-run-force", () => { if (!connReady()) return connModal(() => runJudge(true)); runJudge(true); });
     App.on("judge-stop", () => { JUDGE.stop = true; });
     onDrop("evidence", (text, target) => {
       const u = evalUi(); if (!target || !ALL_CRIT.find((c) => c.id === target)) return;
@@ -560,12 +571,24 @@ function maybeSelChip(e) {
 }
 function hideSelChip() { $$(".sel-chip").forEach((c) => c.remove()); }
 
-const JUDGE = { running: false, done: 0, total: 0, stop: false, error: null };
-async function runJudge() {
+const JUDGE = { running: false, done: 0, total: 0, stop: false, error: null, last: "" };
+async function runJudge(forceAll = false) {
+  if (JUDGE.running) return;
   const c = getConn(); const items = queueItems();
   const ek = judgeLaneKey(c);
-  const todo = items.filter((id) => !(STORE.reviews[ek] && STORE.reviews[ek][id] && STORE.reviews[ek][id].implSubmittedAt));
-  Object.assign(JUDGE, { running: true, done: items.length - todo.length, total: items.length, stop: false, error: null });
+  const pending = items.filter((id) => !(STORE.reviews[ek] && STORE.reviews[ek][id] && STORE.reviews[ek][id].implSubmittedAt));
+  const todo = forceAll ? items.slice() : pending;
+  if (!items.length) {
+    JUDGE.last = "No queue items are selected. Turn on at least one study in the scope panel.";
+    App.render(); toast("No queue items to score");
+    return;
+  }
+  if (!todo.length) {
+    JUDGE.last = `Nothing to run. All ${items.length} queue items already have LLM scores in lane "${ek.replace(/^llm:/, "")}". Use "Run again on all items" to overwrite.`;
+    App.render(); toast("No pending items for this model lane");
+    return;
+  }
+  Object.assign(JUDGE, { running: true, done: forceAll ? 0 : items.length - todo.length, total: items.length, stop: false, error: null, last: `Running ${todo.length} ${forceAll ? "(forced)" : "pending"} items on lane "${ek.replace(/^llm:/, "")}"...` });
   App.render();
   for (const id of todo) {
     if (JUDGE.stop) break;
@@ -583,5 +606,11 @@ async function runJudge() {
     }
   }
   JUDGE.running = false; App.render();
-  if (!JUDGE.error) toast(JUDGE.stop ? "LLM judge stopped" : "LLM judge finished (scores + interview summaries)");
+  if (!JUDGE.error) {
+    JUDGE.last = JUDGE.stop
+      ? `Stopped manually. Completed ${JUDGE.done}/${JUDGE.total}.`
+      : `Finished. Completed ${JUDGE.done}/${JUDGE.total} on lane "${ek.replace(/^llm:/, "")}".`;
+    App.render();
+    toast(JUDGE.stop ? "LLM judge stopped" : "LLM judge finished (scores + interview summaries)");
+  } else { JUDGE.last = JUDGE.error; App.render(); }
 }
