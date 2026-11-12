@@ -965,6 +965,37 @@ function normEndpoint(e) {
     .replace(/\/models\/chat\/completions(\/.*)?$/i, "")
     .replace(/\/+$/, "");
 }
+function anthroUrl(endpoint) {
+  let raw = String(endpoint || "").trim();
+  if (!raw) return "";
+  if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
+  if (/\/anthropic\/v1\/messages(\/.*)?$/i.test(raw)) return raw.replace(/\/+$/, "");
+  return `${normEndpoint(raw)}/anthropic/v1/messages`;
+}
+function textOnly(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === "string") return part;
+      if (part && typeof part.text === "string") return part.text;
+      return "";
+    }).join("\n").trim();
+  }
+  return String(content || "");
+}
+function toAnthropicMessages(messages) {
+  const system = [];
+  const out = [];
+  (messages || []).forEach((m) => {
+    const role = m && m.role;
+    const content = textOnly(m && m.content);
+    if (!content) return;
+    if (role === "system") system.push(content);
+    else out.push({ role: role === "assistant" ? "assistant" : "user", content });
+  });
+  if (!out.length) out.push({ role: "user", content: "" });
+  return { system: system.join("\n\n"), messages: out };
+}
 function extractChatText(body) {
   const msg = body && body.choices && body.choices[0] && body.choices[0].message && body.choices[0].message.content;
   if (Array.isArray(msg)) return msg.map((x) => (typeof x === "string" ? x : x && x.text ? x.text : "")).join("").trim();
@@ -985,23 +1016,36 @@ function parseJsonLoose(text) {
 }
 async function chat(messages, { temperature, maxTokens, json, deployment, apiVersion, provider, model } = {}) {
   const c = { ...getConn(), ...(deployment ? { deployment } : {}), ...(model ? { model } : {}), ...(apiVersion ? { apiVersion } : {}), ...(provider ? { provider } : {}) };
-  let url, payload;
+  let url, payload, extraHeaders = {};
   if (c.provider === "azure-anthropic") {
-    // Azure AI Model Inference endpoint (for Anthropic and other non-OpenAI models).
-    const v = c.apiVersion || "2024-05-01-preview";
-    url = `${normEndpoint(c.endpoint)}/models/chat/completions?api-version=${encodeURIComponent(v)}`;
-    payload = { model: c.model, messages, temperature: temperature ?? c.temperature, max_tokens: maxTokens ?? c.maxTokens };
+    // Anthropic compatibility endpoint on Azure AI.
+    const mapped = toAnthropicMessages(messages);
+    url = anthroUrl(c.endpoint);
+    payload = {
+      model: c.model,
+      system: mapped.system || undefined,
+      messages: mapped.messages,
+      temperature: temperature ?? c.temperature,
+      max_tokens: maxTokens ?? c.maxTokens,
+    };
+    extraHeaders = { "anthropic-version": "2023-06-01" };
   } else {
     url = `${normEndpoint(c.endpoint)}/openai/deployments/${encodeURIComponent(c.deployment)}/chat/completions?api-version=${encodeURIComponent(c.apiVersion)}`;
     payload = { messages, temperature: temperature ?? c.temperature, top_p: 0.9, max_tokens: maxTokens ?? c.maxTokens };
     if (json) payload.response_format = { type: "json_object" };
   }
   const res = CONN.helper
-    ? await fetch(helperBase() + "api/chat", { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key, ...(CONN.token ? { "X-Studio-Token": CONN.token } : {}) }, body: JSON.stringify({ url, payload }) })
-    : await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key }, body: JSON.stringify(payload) });
+    ? await fetch(helperBase() + "api/chat", { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key, ...(CONN.token ? { "X-Studio-Token": CONN.token } : {}) }, body: JSON.stringify({ url, payload, headers: extraHeaders }) })
+    : await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key, ...extraHeaders }, body: JSON.stringify(payload) });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.error ? body.error.message || JSON.stringify(body.error) : "no details returned"}`);
-  return { text: extractChatText(body), usage: body.usage || null };
+  const text = c.provider === "azure-anthropic"
+    ? ((body && body.content && body.content.map((x) => x && x.text ? x.text : "").join("")) || "").trim()
+    : extractChatText(body);
+  const usage = c.provider === "azure-anthropic" && body && body.usage
+    ? { prompt_tokens: body.usage.input_tokens, completion_tokens: body.usage.output_tokens, total_tokens: (Number(body.usage.input_tokens) || 0) + (Number(body.usage.output_tokens) || 0) }
+    : (body.usage || null);
+  return { text, usage };
 }
 function connModal(after) {
   const c = getConn();

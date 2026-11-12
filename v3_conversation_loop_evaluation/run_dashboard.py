@@ -41,6 +41,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             url = body["url"]
             payload = body["payload"]
+            extra_headers = body.get("headers") if isinstance(body.get("headers"), dict) else {}
         except (ValueError, KeyError):
             return self._json(400, {"error": {"message": "Malformed request from the dashboard."}})
 
@@ -52,16 +53,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             or host.endswith(".models.ai.azure.com")
             or host.endswith(".inference.ai.azure.com")
         )
-        allowed_path = parsed.path.startswith("/openai/") or parsed.path.startswith("/models/")
+        allowed_path = parsed.path.startswith("/openai/") or parsed.path.startswith("/models/") or parsed.path.startswith("/anthropic/")
         if not url.startswith("https://") or not allowed_host or not allowed_path:
             return self._json(400, {"error": {"message": "The helper only forwards to Azure model endpoints under /openai/... or /models/..."}})
 
         key = self.headers.get("api-key") or os.environ.get("AZURE_OPENAI_API_KEY", "")
+        fwd = {}
+        if isinstance(extra_headers.get("anthropic-version"), str):
+            fwd["anthropic-version"] = extra_headers["anthropic-version"]
         req = urllib.request.Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
             method="POST",
-            headers={"api-key": key, "Content-Type": "application/json"},
+            headers={"api-key": key, "Content-Type": "application/json", **fwd},
         )
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:

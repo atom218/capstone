@@ -14,7 +14,7 @@ function allowedAzureUrl(rawUrl) {
       || host.endsWith(".services.ai.azure.com")
       || host.endsWith(".models.ai.azure.com")
       || host.endsWith(".inference.ai.azure.com");
-    const pathOk = u.pathname.startsWith("/openai/") || u.pathname.startsWith("/models/");
+    const pathOk = u.pathname.startsWith("/openai/") || u.pathname.startsWith("/models/") || u.pathname.startsWith("/anthropic/");
     return u.protocol === "https:" && hostOk && pathOk;
   } catch (e) {
     return false;
@@ -37,10 +37,14 @@ module.exports = async (req, res) => {
   }
 
   const key = req.headers["api-key"] || process.env.AZURE_OPENAI_API_KEY || "";
+  const extraHeaders = {};
+  if (body.headers && typeof body.headers === "object" && typeof body.headers["anthropic-version"] === "string") {
+    extraHeaders["anthropic-version"] = body.headers["anthropic-version"];
+  }
   try {
     const upstream = await fetch(body.url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "api-key": key },
+      headers: { "Content-Type": "application/json", "api-key": key, ...extraHeaders },
       body: JSON.stringify(body.payload),
     });
     const text = await upstream.text();
