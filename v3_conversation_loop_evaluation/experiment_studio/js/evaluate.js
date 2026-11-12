@@ -110,7 +110,12 @@ function llmReviewComplete(itemIdStr, ek) {
   const it = itemContext(itemIdStr);
   if (!it) return false;
   const needed = [...JUDGE_COMMON, ...(it.run.cfg.arm === "grounded" ? JUDGE_IMPL : [])];
-  return needed.every((c) => scoreVal(rev, c.id) !== undefined);
+  return needed.every((c) => {
+    const s = rev.scores && rev.scores[c.id];
+    if (!s) return false;
+    if (typeof s.note === "string" && s.note.includes("Fallback: model did not return this score.")) return false;
+    return scoreVal(rev, c.id) !== undefined;
+  });
 }
 function judgeQueueStats(items, cfg = getConn()) {
   const ek = judgeLaneKey(cfg);

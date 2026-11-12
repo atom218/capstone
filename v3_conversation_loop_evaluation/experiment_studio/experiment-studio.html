@@ -2008,43 +2008,34 @@ async function judgeItem(id, judgeCfg) {
   };
   const missingCrits = (crits) => crits.filter((c) => scoreVal(rev, c.id) === undefined);
   const runPass = async (pass, crits, maxTokens) => {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      crits.forEach((c) => { delete rev.scores[c.id]; });
-      const r = await chat(judgePrompt(item, pass, attempt === 1), {
+    crits.forEach((c) => { delete rev.scores[c.id]; });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const want = missingCrits(crits);
+      if (!want.length) return;
+      const r = await chat(judgePrompt(item, pass, attempt > 0, want), {
         temperature: 0,
-        maxTokens,
+        maxTokens: Math.min(maxTokens, 260 + want.length * 140),
         json: judgeCfg.provider !== "azure-anthropic",
         deployment: judgeCfg.deployment,
         model: judgeCfg.model,
         apiVersion: judgeCfg.apiVersion,
         provider: judgeCfg.provider,
       });
-      apply(parseJsonLoose(r.text), crits);
-      if (crits.every((c) => scoreVal(rev, c.id) !== undefined)) return;
+      apply(parseJsonLoose(r.text), want);
     }
-    // Final targeted retry for only the criteria that are still missing.
+    // Final single-criterion retries for anything still missing.
     const missing = missingCrits(crits);
-    if (missing.length) {
-      const r = await chat(judgePrompt(item, pass, true, missing), {
+    for (const c of missing) {
+      const r = await chat(judgePrompt(item, pass, true, [c]), {
         temperature: 0,
-        maxTokens: Math.min(maxTokens, 260 + missing.length * 140),
+        maxTokens: Math.min(maxTokens, 360),
         json: judgeCfg.provider !== "azure-anthropic",
         deployment: judgeCfg.deployment,
         model: judgeCfg.model,
         apiVersion: judgeCfg.apiVersion,
         provider: judgeCfg.provider,
       });
-      apply(parseJsonLoose(r.text), missing);
-    }
-    const still = missingCrits(crits);
-    if (still.length) {
-      still.forEach((c) => {
-        rev.scores[c.id] = {
-          v: "na",
-          evidence: [],
-          note: "Fallback: model did not return this score.",
-        };
-      });
+      apply(parseJsonLoose(r.text), [c]);
     }
   };
 
@@ -3123,7 +3114,12 @@ function llmReviewComplete(itemIdStr, ek) {
   const it = itemContext(itemIdStr);
   if (!it) return false;
   const needed = [...JUDGE_COMMON, ...(it.run.cfg.arm === "grounded" ? JUDGE_IMPL : [])];
-  return needed.every((c) => scoreVal(rev, c.id) !== undefined);
+  return needed.every((c) => {
+    const s = rev.scores && rev.scores[c.id];
+    if (!s) return false;
+    if (typeof s.note === "string" && s.note.includes("Fallback: model did not return this score.")) return false;
+    return scoreVal(rev, c.id) !== undefined;
+  });
 }
 function judgeQueueStats(items, cfg = getConn()) {
   const ek = judgeLaneKey(cfg);
