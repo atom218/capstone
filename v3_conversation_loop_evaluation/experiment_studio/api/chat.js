@@ -41,10 +41,20 @@ module.exports = async (req, res) => {
   if (body.headers && typeof body.headers === "object" && typeof body.headers["anthropic-version"] === "string") {
     extraHeaders["anthropic-version"] = body.headers["anthropic-version"];
   }
+  const isAnthropic = (() => {
+    try { return new URL(body.url).pathname.startsWith("/anthropic/"); } catch (e) { return false; }
+  })();
+  const authHeaders = isAnthropic
+    ? {
+      "api-key": key,
+      "x-api-key": key,
+      "Ocp-Apim-Subscription-Key": key,
+    }
+    : { "api-key": key };
   try {
     const upstream = await fetch(body.url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "api-key": key, ...extraHeaders },
+      headers: { "Content-Type": "application/json", ...authHeaders, ...extraHeaders },
       body: JSON.stringify(body.payload),
     });
     const text = await upstream.text();

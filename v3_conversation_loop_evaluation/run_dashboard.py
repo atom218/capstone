@@ -61,11 +61,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         fwd = {}
         if isinstance(extra_headers.get("anthropic-version"), str):
             fwd["anthropic-version"] = extra_headers["anthropic-version"]
+        is_anthropic = parsed.path.startswith("/anthropic/")
+        auth = {
+            "api-key": key,
+            "x-api-key": key,
+            "Ocp-Apim-Subscription-Key": key,
+        } if is_anthropic else {"api-key": key}
         req = urllib.request.Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
             method="POST",
-            headers={"api-key": key, "Content-Type": "application/json", **fwd},
+            headers={**auth, "Content-Type": "application/json", **fwd},
         )
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:

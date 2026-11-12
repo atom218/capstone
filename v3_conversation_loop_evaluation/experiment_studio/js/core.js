@@ -1034,9 +1034,12 @@ async function chat(messages, { temperature, maxTokens, json, deployment, apiVer
     payload = { messages, temperature: temperature ?? c.temperature, top_p: 0.9, max_tokens: maxTokens ?? c.maxTokens };
     if (json) payload.response_format = { type: "json_object" };
   }
+  const directAuthHeaders = c.provider === "azure-anthropic"
+    ? { "api-key": c.key, "x-api-key": c.key, "Ocp-Apim-Subscription-Key": c.key }
+    : { "api-key": c.key };
   const res = CONN.helper
     ? await fetch(helperBase() + "api/chat", { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key, ...(CONN.token ? { "X-Studio-Token": CONN.token } : {}) }, body: JSON.stringify({ url, payload, headers: extraHeaders }) })
-    : await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "api-key": c.key, ...extraHeaders }, body: JSON.stringify(payload) });
+    : await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...directAuthHeaders, ...extraHeaders }, body: JSON.stringify(payload) });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.error ? body.error.message || JSON.stringify(body.error) : "no details returned"}`);
   const text = c.provider === "azure-anthropic"
