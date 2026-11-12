@@ -1025,7 +1025,6 @@ async function chat(messages, { temperature, maxTokens, json, deployment, apiVer
       model: c.model,
       system: mapped.system || undefined,
       messages: mapped.messages,
-      temperature: temperature ?? c.temperature,
       max_tokens: maxTokens ?? c.maxTokens,
     };
     extraHeaders = { "anthropic-version": "2023-06-01" };
