@@ -1201,16 +1201,17 @@ function progBar(run) {
 }
 
 /* ---------------- LLM judge ---------------- */
-function judgePrompt(item, pass) {
+function judgePrompt(item, pass, strict) {
   const { run, i, q, turn } = item;
   const crits = pass === "impl" ? JUDGE_IMPL : JUDGE_COMMON;
   const prior = run.turns.slice(0, i).map((t, k) => `Q${k + 1}: ${questionsOf(run.cfg.product)[k].question}\nA${k + 1}: ${t.reply}`).join("\n\n");
   const lines = crits.map((c) => `- ${c.id} (${c.name}): ${c.ask}\n  0 = ${c.anchors[0]}\n  1 = ${c.anchors[1]}\n  2 = ${c.anchors[2]}\n  3 = ${c.anchors[3]}`).join("\n");
   let ctx = `Approved persona profile:\n${runPersonaText(run)}\n\nEarlier replies in this interview:\n${prior || "(none, this is the first question)"}\n\nQuestion ${i + 1}${isScreen(q) ? " (shown with a product screen)" : " (topic-only, no screen)"}:\n${q.question}\n\nReply to score:\n${turn.reply}`;
   if (pass === "impl") ctx += `\n\nCue supplied at this turn: ${turn.state_before}\nBehavior rules in the system card:\n${rulesFor(run.cfg).map((r) => "- " + r).join("\n") || "(none)"}\nPrevious turn's cue: ${i ? run.turns[i - 1].state_before : "(first turn)"}`;
+  const strictTail = strict ? "\n\nImportant: return strict JSON only (no prose, no markdown fences)." : "";
   return [
     { role: "system", content: "You are a careful UX research reviewer scoring one synthetic interview reply against a rubric. Score each criterion independently on 0-3 using the anchors. Use \"na\" only where the criterion cannot apply (for example conversation consistency or trajectory on the first question). Quote the exact words that support each score. Respond with JSON only." },
-    { role: "user", content: `${ctx}\n\nCriteria:\n${lines}\n\nReturn JSON: {"scores": {"<criterion id>": {"v": 0|1|2|3|"na", "evidence": ["exact quote"], "note": "one sentence"}}, "factual_concern": "" }` },
+    { role: "user", content: `${ctx}\n\nCriteria:\n${lines}\n\nReturn JSON: {"scores": {"<criterion id>": {"v": 0|1|2|3|"na", "evidence": ["exact quote"], "note": "one sentence"}}, "factual_concern": "" }${strictTail}` },
   ];
 }
 function judgeRunSummaryPrompt(run, items) {
@@ -1247,29 +1248,29 @@ async function judgeItem(id, judgeCfg) {
     });
     if (out && out.factual_concern) rev.flags.factual = { on: true, note: out.factual_concern };
   };
-  const r1 = await chat(judgePrompt(item, "common"), {
-    temperature: 0,
-    maxTokens: 900,
-    json: judgeCfg.provider !== "azure-anthropic",
-    deployment: judgeCfg.deployment,
-    model: judgeCfg.model,
-    apiVersion: judgeCfg.apiVersion,
-    provider: judgeCfg.provider,
-  });
-  apply(parseJsonLoose(r1.text), JUDGE_COMMON);
+  const runPass = async (pass, crits, maxTokens) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      crits.forEach((c) => { delete rev.scores[c.id]; });
+      const r = await chat(judgePrompt(item, pass, attempt === 1), {
+        temperature: 0,
+        maxTokens,
+        json: judgeCfg.provider !== "azure-anthropic",
+        deployment: judgeCfg.deployment,
+        model: judgeCfg.model,
+        apiVersion: judgeCfg.apiVersion,
+        provider: judgeCfg.provider,
+      });
+      apply(parseJsonLoose(r.text), crits);
+      if (crits.every((c) => scoreVal(rev, c.id) !== undefined)) return;
+    }
+    throw new Error(`Judge did not return complete ${pass} scores.`);
+  };
+
+  await runPass("common", JUDGE_COMMON, 900);
   rev.commonSubmittedAt = new Date().toISOString();
   rev.commonAudit = Object.fromEntries(JUDGE_COMMON.map((c) => [c.id, scoreVal(rev, c.id)]));
   if (item.run.cfg.arm === "grounded") {
-    const r2 = await chat(judgePrompt(item, "impl"), {
-      temperature: 0,
-      maxTokens: 700,
-      json: judgeCfg.provider !== "azure-anthropic",
-      deployment: judgeCfg.deployment,
-      model: judgeCfg.model,
-      apiVersion: judgeCfg.apiVersion,
-      provider: judgeCfg.provider,
-    });
-    apply(parseJsonLoose(r2.text), JUDGE_IMPL);
+    await runPass("impl", JUDGE_IMPL, 700);
   } else JUDGE_IMPL.forEach((c) => (rev.scores[c.id] = { v: "na", evidence: [], note: "Baseline: no journey supplied." }));
   rev.implSubmittedAt = new Date().toISOString();
   rev.updatedAt = rev.implSubmittedAt;

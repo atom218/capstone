@@ -104,9 +104,17 @@ function laneStage(itemIdStr, lane) {
   const revs = reviewsFor(itemIdStr).filter((x) => lane === "all" || x.lane === lane);
   return revs.reduce((best, x) => strongerStage(best, reviewStage(x.r)), "none");
 }
+function llmReviewComplete(itemIdStr, ek) {
+  const rev = STORE.reviews[ek] && STORE.reviews[ek][itemIdStr];
+  if (!rev || !rev.implSubmittedAt) return false;
+  const it = itemContext(itemIdStr);
+  if (!it) return false;
+  const needed = [...JUDGE_COMMON, ...(it.run.cfg.arm === "grounded" ? JUDGE_IMPL : [])];
+  return needed.every((c) => scoreVal(rev, c.id) !== undefined);
+}
 function judgeQueueStats(items, cfg = getConn()) {
   const ek = judgeLaneKey(cfg);
-  const doneSet = new Set(items.filter((id) => STORE.reviews[ek] && STORE.reviews[ek][id] && STORE.reviews[ek][id].implSubmittedAt));
+  const doneSet = new Set(items.filter((id) => llmReviewComplete(id, ek)));
   const pending = items.filter((id) => !doneSet.has(id));
   return { ek, total: items.length, done: doneSet.size, pending: pending.length, next: pending[0] || null };
 }
@@ -611,7 +619,7 @@ async function runJudge(forceAll = false, summariesOnly = false) {
   if (JUDGE.running) return;
   const c = getConn(); const items = queueItems();
   const ek = judgeLaneKey(c);
-  const pending = items.filter((id) => !(STORE.reviews[ek] && STORE.reviews[ek][id] && STORE.reviews[ek][id].implSubmittedAt));
+  const pending = items.filter((id) => !llmReviewComplete(id, ek));
   const runIds = Array.from(new Set(items.map((id) => parseItem(id).runId)));
   const missingSummaries = runIds.filter((runId) => !((STORE.judgeSummaries[ek] || {})[runId] || {}).text);
   const todo = summariesOnly ? [] : (forceAll ? items.slice() : pending);
