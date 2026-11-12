@@ -3061,6 +3061,25 @@ function humanReviewsForItem(itemIdStr) {
     .map((x) => ({ ...x, name: reviewerNameFromKey(x.ek), st: reviewStage(x.r) }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+function llmReviewForItem(itemIdStr, cfg = getConn()) {
+  const ek = judgeLaneKey(cfg);
+  return { ek, review: (STORE.reviews[ek] && STORE.reviews[ek][itemIdStr]) || null };
+}
+function scoreText(v) {
+  if (v == null) return "—";
+  if (v === "na" || v === "n/a") return "N/A";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+function humanMeanScore(rows, cid) {
+  const vals = rows.map((x) => scoreVal(x.r, cid)).filter((v) => typeof v === "number" && Number.isFinite(v));
+  if (!vals.length) {
+    return rows.some((x) => scoreVal(x.r, cid) === "na") ? "na" : undefined;
+  }
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  return Number.isInteger(mean) ? mean : Number(mean.toFixed(1));
+}
 function teammateHover(itemIdStr) {
   const hs = humanReviewsForItem(itemIdStr);
   if (!hs.length) return "No teammate reviews yet";
@@ -3163,7 +3182,7 @@ const Evaluate = {
           <p class="tiny faint">Model lane: ${esc(judge.ek.replace(/^llm:/, ""))} · Queue ${judge.total} · Pending ${judge.pending}</p>
           <div class="row"><button class="btn ghost sm" data-action="conn">Model connection / API key</button></div>
           ${JUDGE.running ? `<div class="row"><div class="grow"><div class="lane"><span class="small">Scoring</span><div class="bar"><i style="width:${(100 * JUDGE.done) / Math.max(1, JUDGE.total)}%"></i></div><span class="small">${JUDGE.done}/${JUDGE.total}</span></div></div><button class="btn sm" data-action="judge-stop">Stop</button></div>`
-            : `<div class="row wrap"><button class="btn" data-action="judge-run">${connReady() ? "Run judge on pending queue items" : "Connect a model to run the judge"}</button>${connReady() ? `<button class="btn ghost" data-action="judge-run-force">Run again on all items</button>` : ""}</div>`}
+            : `<div class="row wrap"><button class="btn" data-action="judge-run">${connReady() ? "Run judge on pending queue items" : "Connect a model to run the judge"}</button>${connReady() ? `<button class="btn ghost" data-action="judge-run-force">Run again on all items</button><button class="btn ghost" data-action="judge-summaries">Generate interview summaries</button>` : ""}</div>`}
           ${JUDGE.error ? `<div class="note warn small">${esc(JUDGE.error)}</div>` : ""}
           ${JUDGE.last ? `<div class="note small">${esc(JUDGE.last)}</div>` : ""}
           ${this.judgeSummaryPanel(items)}
@@ -3278,6 +3297,8 @@ const Evaluate = {
     const cyc = run.cfg.arm === "grounded" ? DATA.cycles[run.cfg.journey] : null;
     const cycleName = cyc ? cyc.short_title.replace(/^Cycle \d: /, "") : "";
     const teamRows = humanReviewsForItem(u.item);
+    const llmNow = llmReviewForItem(u.item);
+    const compareCrit = [...JUDGE_COMMON, ...(run.cfg.arm === "grounded" ? JUDGE_IMPL : [])];
     const me = (STORE.reviewer.name || "").trim();
     return `<div class="spread" style="margin-bottom:16px">
         <div class="row"><button class="btn ghost" data-action="eval-home">← Queue</button><h2>${anonCode(u.item)}</h2><span class="chip">Interview ${interviewNumber(u.item, blindInterviews(queueSet()))}, Q${it.i + 1}</span><span class="chip">${stageLabel(stage)}</span></div>
@@ -3297,6 +3318,19 @@ const Evaluate = {
               ${cyc ? `<span class="chip line">${esc(DETAIL[run.cfg.detail].name)} · ${esc(TIMING[run.cfg.timing].name.toLowerCase())}</span>` : ""}
             </div>
             <p class="tiny faint" style="margin-top:8px">What changes each question: the question text (and screen when present) plus the live state cue. The approved profile and product pack stay the same for this interview.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="spread"><h3>Human vs LLM on this response</h3><span class="small faint">${compareCrit.length} criteria</span></div>
+            <div class="row wrap" style="margin-top:8px;align-items:stretch">
+              <div class="note focus small grow" style="min-width:280px">
+                <div class="spread"><b>Human (team average)</b><span class="faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
+                <div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(humanMeanScore(teamRows, c.id)))}</b></div>`).join("")}</div>
+              </div>
+              <div class="note small grow" style="min-width:280px">
+                <div class="spread"><b>LLM (${esc(llmNow.ek.replace(/^llm:/, ""))})</b><span class="faint">${llmNow.review && llmNow.review.implSubmittedAt ? fmtTime(llmNow.review.implSubmittedAt) : "not scored yet"}</span></div>
+                ${llmNow.review ? `<div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(scoreVal(llmNow.review, c.id)))}</b></div>`).join("")}</div>` : `<p class="tiny faint" style="margin-top:6px">Run the LLM judge to populate this side.</p>`}
+              </div>
+            </div>
           </section>
           <section class="panel panel-pad">
             <div class="spread"><h3>Team evaluations on this response</h3><span class="small faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
@@ -3482,6 +3516,7 @@ const Evaluate = {
     });
     App.on("judge-run", () => { if (!connReady()) return connModal(() => runJudge()); runJudge(); });
     App.on("judge-run-force", () => { if (!connReady()) return connModal(() => runJudge(true)); runJudge(true); });
+    App.on("judge-summaries", () => { if (!connReady()) return connModal(() => runJudge(false, true)); runJudge(false, true); });
     App.on("judge-stop", () => { JUDGE.stop = true; });
     onDrop("evidence", (text, target) => {
       const u = evalUi(); if (!target || !ALL_CRIT.find((c) => c.id === target)) return;
@@ -3560,23 +3595,34 @@ function maybeSelChip(e) {
 function hideSelChip() { $$(".sel-chip").forEach((c) => c.remove()); }
 
 const JUDGE = { running: false, done: 0, total: 0, stop: false, error: null, last: "" };
-async function runJudge(forceAll = false) {
+async function runJudge(forceAll = false, summariesOnly = false) {
   if (JUDGE.running) return;
   const c = getConn(); const items = queueItems();
   const ek = judgeLaneKey(c);
   const pending = items.filter((id) => !(STORE.reviews[ek] && STORE.reviews[ek][id] && STORE.reviews[ek][id].implSubmittedAt));
-  const todo = forceAll ? items.slice() : pending;
+  const runIds = Array.from(new Set(items.map((id) => parseItem(id).runId)));
+  const missingSummaries = runIds.filter((runId) => !((STORE.judgeSummaries[ek] || {})[runId] || {}).text);
+  const todo = summariesOnly ? [] : (forceAll ? items.slice() : pending);
   if (!items.length) {
     JUDGE.last = "No queue items are selected. Turn on at least one study in the scope panel.";
     App.render(); toast("No queue items to score");
     return;
   }
-  if (!todo.length) {
-    JUDGE.last = `Nothing to run. All ${items.length} queue items already have LLM scores in lane "${ek.replace(/^llm:/, "")}". Use "Run again on all items" to overwrite.`;
+  if (!todo.length && !missingSummaries.length) {
+    JUDGE.last = `Nothing to run. All ${items.length} queue items already have LLM scores in lane "${ek.replace(/^llm:/, "")}", and interview summaries already exist.`;
     App.render(); toast("No pending items for this model lane");
     return;
   }
-  Object.assign(JUDGE, { running: true, done: forceAll ? 0 : items.length - todo.length, total: items.length, stop: false, error: null, last: `Running ${todo.length} ${forceAll ? "(forced)" : "pending"} items on lane "${ek.replace(/^llm:/, "")}"...` });
+  Object.assign(JUDGE, {
+    running: true,
+    done: forceAll || summariesOnly ? 0 : items.length - todo.length,
+    total: summariesOnly ? Math.max(1, missingSummaries.length) : items.length,
+    stop: false,
+    error: null,
+    last: summariesOnly
+      ? `Generating ${missingSummaries.length} missing interview summaries on lane "${ek.replace(/^llm:/, "")}"...`
+      : `Running ${todo.length} ${forceAll ? "(forced)" : "pending"} items on lane "${ek.replace(/^llm:/, "")}"...`,
+  });
   App.render();
   for (const id of todo) {
     if (JUDGE.stop) break;
@@ -3585,11 +3631,13 @@ async function runJudge(forceAll = false) {
     App.renderSoon();
   }
   if (!JUDGE.stop && !JUDGE.error) {
-    const runIds = Array.from(new Set(items.map((id) => parseItem(id).runId)));
-    for (const runId of runIds) {
+    const summaryOnlyMode = summariesOnly || (!todo.length && missingSummaries.length);
+    const summaryTargets = summaryOnlyMode ? missingSummaries : runIds;
+    for (const runId of summaryTargets) {
       if (JUDGE.stop) break;
       try { await judgeInterviewSummary(runId, c); }
       catch (err) { JUDGE.error = `Summary failed at ${anonCode(runId + "#0").replace("Q1", "Interview")}: ${err.message || err}`; break; }
+      if (summaryOnlyMode) JUDGE.done++;
       App.renderSoon();
     }
   }
