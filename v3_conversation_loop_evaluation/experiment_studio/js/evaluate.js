@@ -54,6 +54,17 @@ function stageIcon(stage) {
 }
 function cellGlyph(st) { return `<span class="cell-glyph ${st}" aria-hidden="true"></span>`; }
 function stageLabel(st) { return { none: "Not started", started: "In progress", common: "Common scores in, checks left", complete: "Complete" }[st]; }
+function addedMeasuresLocked(rev) {
+  return !!(rev.additionalSubmittedAt || (rev.commonSubmittedAt && ADDED_MEASURES.every((c) => rev.commonAudit && Object.prototype.hasOwnProperty.call(rev.commonAudit, c.id))));
+}
+function firstReviewCriterion(rev, item) {
+  if (!rev || !rev.commonSubmittedAt) return COMMON[0].id;
+  if (!addedMeasuresLocked(rev)) return ADDED_MEASURES.find((c) => scoreVal(rev, c.id) === undefined)?.id || ADDED_MEASURES[0].id;
+  return !rev.implSubmittedAt && item.run.cfg.arm === "grounded" ? IMPL[0].id : COMMON[0].id;
+}
+function criterionLocked(rev, id) {
+  return ADDED_MEASURE_IDS.has(id) ? addedMeasuresLocked(rev) : COMMON_IDX[id] ? !!rev.commonSubmittedAt : !!rev.implSubmittedAt;
+}
 function reviewerNameFromKey(ek) { return ek && ek.startsWith("human:") ? (ek.slice(6).trim() || "Reviewer") : ek || "Reviewer"; }
 function fmtScore(v) { return v === undefined || v === null ? "–" : v === "na" ? "N/A" : String(v); }
 function humanReviewsForItem(itemIdStr) {
@@ -313,7 +324,10 @@ const Evaluate = {
           </section>
         </div>
         <section class="panel scorecard" aria-label="Scorecard">
-          ${["Behavioral consistency", "Product feedback"].map((g) => `<div class="sc-group">${g}</div>${COMMON.filter((c) => c.group === g).map((c) => this.critRow(c, rev, it, u, locked)).join("")}${g === "Product feedback" ? this.factualRow(rev, locked) : ""}`).join("")}
+          <div class="rubric-intro small muted">Rate each criterion separately. The examples are illustrations, not evidence about this answer. Human likeness and contextual responsiveness apply to both conditions and are reported separately from the five core criteria.</div>
+          ${locked && !rev.rubricVersion ? `<div class="rubric-intro note small">These ratings were recorded with earlier guidance and remain unchanged. Human likeness and contextual responsiveness are unscored unless a reviewer explicitly adds ratings.</div>` : ""}
+          ${["Behavioral consistency", "Product feedback", "Additional measures"].map((g) => `<div class="sc-group">${g}</div>${COMMON.filter((c) => c.group === g).map((c) => this.critRow(c, rev, it, u, criterionLocked(rev, c.id))).join("")}${g === "Product feedback" ? this.factualRow(rev, locked) : ""}`).join("")}
+          ${locked && !addedMeasuresLocked(rev) ? `<div class="footer-bar"><span class="small muted">Add these two ratings without reopening the original scores.</span><button class="btn primary" data-action="submit-additional" ${ADDED_MEASURES.every((c) => scoreVal(rev, c.id) !== undefined) ? "" : "disabled"}>Submit additional measures</button></div>` : ""}
           ${locked ? `<div class="footer-bar"><span class="small muted">${ICON.lock} Common scores submitted ${fmtTime(rev.commonSubmittedAt)}. The original scores are kept for audit.</span><button class="btn ghost sm" data-action="unlock-common">Revise</button></div>`
             : `<div class="footer-bar"><span class="saved-tick" id="savedTick">${rev.updatedAt ? "Autosaved " + fmtTime(rev.updatedAt) : ""}</span>
                <button class="btn primary" data-action="submit-common" ${COMMON.every((c) => scoreVal(rev, c.id) !== undefined) ? "" : "disabled"}>Submit common scores</button></div>`}
@@ -332,9 +346,10 @@ const Evaluate = {
         ${badge(v)}
       </button>
       ${open ? `<div class="crit-body">
-        ${c.reminder ? `<div class="reminder">${c.reminder} A reply can score high here without scoring high on the other two.</div>` : ""}
+        ${c.guidance ? `<div class="reminder">${esc(c.guidance)}</div>` : ""}
+        ${c.exampleContext ? `<p class="tiny faint">${esc(c.exampleContext)}</p>` : ""}
         ${autoNa && v === undefined ? `<div class="note small">This is the first question, so there is nothing earlier to be consistent with. Mark it not applicable unless you disagree.</div>` : ""}
-        <div class="anchors" role="radiogroup" aria-label="${c.name} score">${c.anchors.map((a, k) => `<button class="anchor" role="radio" aria-checked="${v === k}" aria-pressed="${v === k}" data-action="score" data-c="${c.id}" data-v="${k}" ${locked ? "disabled" : ""}><b>${k}</b><span>${esc(a)}</span></button>`).join("")}</div>
+        <div class="anchors" role="radiogroup" aria-label="${c.name} score">${c.anchors.map((a, k) => `<button class="anchor" role="radio" aria-checked="${v === k}" aria-pressed="${v === k}" data-action="score" data-c="${c.id}" data-v="${k}" ${locked ? "disabled" : ""}><b>${k}</b><span class="anchor-copy">${esc(a)}${c.examples && c.examples[k] ? `<small class="anchor-example">Example: ${esc(c.examples[k])}</small>` : ""}</span></button>`).join("")}</div>
         <div class="crit-tools">
           <button class="btn sm" data-action="score" data-c="${c.id}" data-v="na" aria-pressed="${v === "na"}" ${locked ? "disabled" : ""}>Not applicable</button>
           ${v !== undefined && !locked ? `<button class="btn ghost sm" data-action="score" data-c="${c.id}" data-v="clear">Clear score</button>` : ""}
@@ -387,8 +402,8 @@ const Evaluate = {
   bind() {
     const save = () => { persist(); App.render(); };
     const touch = (rev) => { rev.updatedAt = new Date().toISOString(); };
-    App.on("open-item", (el) => { const u = evalUi(); u.view = "item"; u.item = el.dataset.id; u.open = COMMON[0].id; u.support = null;
-      const rev = myReview(u.item); if (rev && rev.commonSubmittedAt && !rev.implSubmittedAt) u.open = IMPL[0].id; save(); window.scrollTo(0, 0); });
+    App.on("open-item", (el) => { const u = evalUi(); u.view = "item"; u.item = el.dataset.id; u.support = null;
+      u.open = firstReviewCriterion(myReview(u.item), itemContext(u.item)); save(); window.scrollTo(0, 0); });
     App.on("eval-home", () => { evalUi().view = "home"; save(); });
     App.on("qorder", (el) => { evalUi().order = el.dataset.k; save(); });
     App.on("qview", (el) => { evalUi().qview = el.dataset.k; save(); });
@@ -405,19 +420,20 @@ const Evaluate = {
     App.on("refresh-team", () => { App.render(); });
     App.on("item-step", (el) => {
       const u = evalUi(); const items = queueItems(); const pos = items.indexOf(u.item);
-      const n = items[pos + Number(el.dataset.d)]; if (n) { u.item = n; u.support = null; const r = myReview(n); u.open = r && r.commonSubmittedAt && !r.implSubmittedAt ? IMPL[0].id : COMMON[0].id; save(); window.scrollTo(0, 0); }
+      const n = items[pos + Number(el.dataset.d)]; if (n) { u.item = n; u.support = null; u.open = firstReviewCriterion(myReview(n), itemContext(n)); save(); window.scrollTo(0, 0); }
     });
     App.on("open-crit", (el) => { const u = evalUi(); u.open = u.open === el.dataset.c ? null : el.dataset.c; save(); });
     App.on("support", (el) => { const u = evalUi(); u.support = u.support === el.dataset.k ? null : el.dataset.k; save(); });
     App.on("score", (el) => {
       if (STORE.reviewer.lane === "human" && !STORE.reviewer.name.trim()) { toast("Add your name in the queue view first"); return; }
       const u = evalUi(); const rev = myReview(u.item, true); const c = el.dataset.c;
+      if (!ALL_CRIT.some((criterion) => criterion.id === c) || criterionLocked(rev, c)) return;
       rev.scores[c] = rev.scores[c] || { evidence: [], note: "" };
       const raw = el.dataset.v;
       if (raw === "clear") delete rev.scores[c].v; else rev.scores[c].v = raw === "na" ? "na" : Number(raw);
       touch(rev);
       // move to the next unscored criterion in the same pass
-      const pass = COMMON.some((x) => x.id === c) ? COMMON : IMPL;
+      const pass = ADDED_MEASURE_IDS.has(c) && rev.commonSubmittedAt ? ADDED_MEASURES : COMMON.some((x) => x.id === c) ? COMMON : IMPL;
       const nxt = pass.find((x) => scoreVal(rev, x.id) === undefined);
       if (raw !== "clear" && nxt) u.open = nxt.id;
       save();
@@ -426,12 +442,25 @@ const Evaluate = {
     App.on("flag-factual", () => { const rev = myReview(evalUi().item, true); const f = rev.flags.factual || {}; f.on = !f.on; rev.flags.factual = f; touch(rev); save(); });
     App.on("submit-common", () => {
       const u = evalUi(); const rev = myReview(u.item, true);
+      if (rev.commonSubmittedAt) return;
+      if (!COMMON.every((c) => scoreVal(rev, c.id) !== undefined)) { toast("Rate all seven criteria, or mark a criterion not applicable, before submitting."); return; }
       rev.commonSubmittedAt = new Date().toISOString();
       rev.commonAudit = rev.commonAudit || Object.fromEntries(COMMON.map((c) => [c.id, scoreVal(rev, c.id)]));
+      rev.additionalAudit = rev.additionalAudit || Object.fromEntries(ADDED_MEASURES.map((c) => [c.id, scoreVal(rev, c.id)]));
+      rev.additionalSubmittedAt = rev.additionalSubmittedAt || rev.commonSubmittedAt;
+      rev.additionalRubricVersion = rev.additionalRubricVersion || HUMAN_RUBRIC_VERSION;
       const it = itemContext(u.item);
       if (it.i === 0) { rev.scores.trajectory = rev.scores.trajectory || { v: "na", evidence: [], note: "" }; }
       u.open = it.run.cfg.arm === "grounded" ? IMPL.find((c) => scoreVal(rev, c.id) === undefined)?.id || null : null;
       save(); toast("Common scores submitted. The cue is now revealed.");
+    });
+    App.on("submit-additional", () => {
+      const rev = myReview(evalUi().item, true);
+      if (!rev.commonSubmittedAt || addedMeasuresLocked(rev) || !ADDED_MEASURES.every((c) => scoreVal(rev, c.id) !== undefined)) return;
+      rev.additionalAudit = Object.fromEntries(ADDED_MEASURES.map((c) => [c.id, scoreVal(rev, c.id)]));
+      rev.additionalSubmittedAt = new Date().toISOString();
+      rev.additionalRubricVersion = HUMAN_RUBRIC_VERSION;
+      touch(rev); save(); toast("Additional measures saved. Original scores are unchanged.");
     });
     App.on("unlock-common", () => {
       const rev = myReview(evalUi().item, true);
@@ -449,7 +478,7 @@ const Evaluate = {
     onDrop("evidence", (text, target) => {
       const u = evalUi(); if (!target || !ALL_CRIT.find((c) => c.id === target)) return;
       const rev = myReview(u.item, true);
-      if ((COMMON_IDX[target] && rev.commonSubmittedAt) || (!COMMON_IDX[target] && rev.implSubmittedAt)) { toast("That pass is submitted. Revise it to add evidence."); return; }
+      if (criterionLocked(rev, target)) { toast("That pass is submitted. Revise it to add evidence."); return; }
       rev.scores[target] = rev.scores[target] || { evidence: [], note: "" };
       rev.scores[target].evidence = rev.scores[target].evidence || [];
       if (!rev.scores[target].evidence.some((e) => e.text === text)) rev.scores[target].evidence.push({ text });
@@ -467,7 +496,7 @@ const Evaluate = {
       if (App.ws !== "evaluate" || evalUi().view !== "item") return;
       if (e.target.closest("input, textarea, [contenteditable]") || e.metaKey || e.ctrlKey || e.altKey) return;
       const u = evalUi(); const rev = myReview(u.item) || {};
-      const pass = rev.commonSubmittedAt ? (itemContext(u.item).run.cfg.arm === "grounded" ? IMPL : []) : COMMON;
+      const pass = !rev.commonSubmittedAt ? COMMON : !addedMeasuresLocked(rev) ? ADDED_MEASURES : itemContext(u.item).run.cfg.arm === "grounded" ? IMPL : [];
       if (!pass.length) return;
       const idx = Math.max(0, pass.findIndex((c) => c.id === u.open));
       if (/^[0-3]$/.test(e.key) || e.key.toLowerCase() === "n") {

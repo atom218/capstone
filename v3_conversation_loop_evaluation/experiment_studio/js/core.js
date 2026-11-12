@@ -77,9 +77,8 @@ const PROFILE_FREQ = {
   each: { name: "Profile restated every turn", sub: "The approved profile is repeated in each turn's message." },
 };
 
-/* Rubric: five common criteria plus journey implementation checks.
-   Anchors are a working draft for the team to refine. */
-const COMMON = [
+/* Preserve the automated judge rubric while human guidance is revised separately. */
+const JUDGE_COMMON = [
   { id: "persona", group: "Behavioral consistency", name: "Persona consistency", ask: "Does the reply sound like the approved profile?",
     support: "profile",
     anchors: ["Contradicts the profile, or reads as a generic assistant.", "Mostly generic; a weak link to who she is.",
@@ -101,7 +100,7 @@ const COMMON = [
     anchors: ["Nothing the team could act on.", "An obvious or generic takeaway.",
       "A clear thing to investigate, preserve or change.", "A non-obvious direction the team could test."] },
 ];
-const IMPL = [
+const JUDGE_IMPL = [
   { id: "cue_fit", group: "Context and journey implementation", name: "Cue reflected", ask: "Do tone and stance match the cue supplied at this turn?",
     anchors: ["Opposite of the cue.", "Barely reflects it.", "Recognizably reflects it.", "Clearly and naturally reflects it."] },
   { id: "substance", group: "Context and journey implementation", name: "Substance kept", ask: "Does the cue color the reply without crowding out product feedback?",
@@ -109,6 +108,63 @@ const IMPL = [
   { id: "trajectory", group: "Context and journey implementation", name: "Trajectory respected", ask: "Does the shift from the previous turn follow the journey's direction?",
     naFirst: true,
     anchors: ["Moves against the journey.", "Flat where the journey moves.", "Moves in the right direction.", "Matches the direction and size of the move."] },
+];
+
+/* Human rubric: the five core criteria stay separate from the two added measures.
+   Existing score IDs, values and review records are never migrated or backfilled. */
+const HUMAN_RUBRIC_VERSION = "2026-11-12-human-v2";
+const COMMON = [
+  { id: "persona", group: "Behavioral consistency", name: "Persona consistency", ask: "Does the answer fit the supplied profile and scenario?", support: "profile",
+    guidance: "Judge compatibility, not how often the answer mentions profile traits. A brief answer can earn 3. A role supplied by a hypothetical question is allowed.",
+    exampleContext: "Illustrative profile: an operations manager; no business ownership or household arrangements are specified.",
+    anchors: ["Contradicts a central profile fact, or invents personal history that changes the answer's basis.", "Adds an important unsupported personal detail, or has a substantial unresolved mismatch with the profile.", "Fits overall, with a small unsupported detail or mismatch that does not change the main point.", "Fits the explicit profile and the question's scenario, without invented personal history."],
+    examples: ["'As the owner of this business...' when ownership was never supplied and drives the decision.", "'My partner handles all my subscriptions,' used to explain the answer, though no partner was supplied.", "'I would check this over my usual morning coffee,' where that incidental habit was not supplied.", "'I would check the renewal date first.' No biography needs to be repeated."] },
+  { id: "conversation", group: "Behavioral consistency", name: "Conversation consistency", ask: "Does the answer fit what was said earlier, allowing for new information?", support: "history", naFirst: true,
+    guidance: "A reasonable change of mind or a new hypothetical is not a contradiction. The answer does not need to repeat earlier concerns. Mark Q1 not applicable.",
+    exampleContext: "Illustrative earlier answer: 'I would keep the service until I check whether my family uses it.'",
+    anchors: ["Clearly contradicts an important earlier statement or decision without a reasonable explanation.", "Has a substantial unresolved mismatch that makes the earlier and current positions hard to reconcile.", "Fits overall, with a small inconsistency that leaves the main position intact.", "Remains consistent, or changes reasonably because of new information or a changed scenario."],
+    examples: ["'I already canceled it without checking,' with no new information or explanation.", "'Whether anyone else uses it has no bearing on my decision,' without reconciling the earlier condition.", "Still waits for the same check, but changes a minor incidental detail about when to review it.", "'Now that I know no one else uses it, I would cancel.' The new information explains the change."] },
+  { id: "specificity", group: "Product feedback", name: "Specificity", ask: "How clearly does the answer identify a particular product point?", support: "product",
+    guidance: "Score what the point is, not why it matters. A concrete strength and a concrete problem are equally eligible. Do not invent details to improve the score.",
+    anchors: ["Gives only a general reaction; no particular product point is identifiable.", "Names a broad area, but the particular need, benefit or problem is unclear.", "Identifies a particular need, feature, benefit, problem or requirement.", "Precisely identifies the point and a relevant condition, interaction or distinguishing detail."],
+    examples: ["'It looks good.'", "'Privacy matters.'", "'Show who can read a shared summary.'", "'Before I share a summary, show the recipient and exactly which entries it includes.'"] },
+  { id: "consequence", group: "Product feedback", name: "User consequence", ask: "How clearly does the answer explain the effect on the user?", support: "product",
+    guidance: "Count effects actually expressed, not effects the reviewer imagines. A reason not to use the product or a strength worth keeping can score highly.",
+    anchors: ["States no effect on the user's task, decision, trust, access or willingness to use it.", "States only a vague effect, such as greater ease or a better experience.", "Explains a concrete effect on the user's task, decision, trust, access or willingness to use it.", "Explains that effect with a meaningful condition, constraint or trade-off showing when or why it matters."],
+    examples: ["'Add a confirmation date.' No effect is stated.", "'It would be easier.'", "'I would not have to keep checking whether the cancellation went through.'", "'With renewal tomorrow, a confirmation deadline would tell me whether I need to follow up before another charge.'"] },
+  { id: "insight", group: "Product feedback", name: "Product insight", ask: "How clearly does the answer support a useful product implication?", support: "product",
+    guidance: "The implication can be something to investigate, preserve or change. It need not be novel. The participant need not propose a solution; the reviewer may state an implication supported by their words.",
+    exampleContext: "These examples illustrate supported implications. Factual concerns remain a separate flag.",
+    anchors: ["Supports no discernible product decision or investigation.", "Suggests a broad direction, but the reviewer must add substantial interpretation to make it useful.", "Supports a clear implication: a need, adoption barrier, feature expectation or strength to preserve.", "Supports a focused decision or testable hypothesis through a relevant condition, priority, trade-off or distinction between alternatives."],
+    examples: ["'I do not have anything to say about it.'", "'Make it better.'", "'I need to know when cancellation is confirmed.' This supports investigating status information.", "'A deadline matters most when renewal is near; otherwise I can wait.' This supports testing when a deadline changes follow-up decisions."] },
+  { id: "likeness", group: "Additional measures", name: "Human likeness", ask: "Does the answer sound like a natural contribution to an interview?",
+    guidance: "Judge expression separately from correctness, persona consistency and product value. Brevity, formality, dialect and fluent speech are not faults. Do not reward slang, distress or disclosure.",
+    anchors: ["Mostly reads like assistant output, a scripted performance or a generic report.", "Repeated stock phrases, mechanical structure or unnecessary explanation substantially weaken naturalness.", "Mostly sounds natural, with occasional formulaic or unnecessarily polished phrasing.", "Sounds natural for this exchange, with appropriate wording and detail and no conspicuous templating."],
+    examples: ["'As an AI assistant, I can provide a comprehensive evaluation of this interface.'", "An ordinary reply repeatedly uses report-style introductions and conclusions.", "'I would check the date first. Overall, this would enhance my user experience.'", "'I would check the date first. If it is missing, I would leave it for now.'"] },
+  { id: "context", group: "Additional measures", name: "Contextual responsiveness", ask: "Does the answer address this question using the situation actually presented?", support: "product",
+    guidance: "Judge the current question and scenario, not earlier-turn consistency. A reasonable interpretation, privacy boundary, uncertainty or decision not to act can earn 3. For scores below 3, note question relevance, situation fit, or both.",
+    exampleContext: "Illustrative question: 'What would you let the bank handle, and what would you want to approve yourself?'",
+    anchors: ["Misses the central question or answers a materially different situation.", "Addresses only part of the question, missing central information or substantially misreading the situation.", "Addresses the central question and information, with a minor omission or mismatch.", "Addresses the question meaningfully given the available information, including reasonable uncertainty or boundaries."],
+    examples: ["'I would apply for a mortgage.'", "'A dashboard would be useful,' without addressing the authorization decision.", "'I would let the bank submit the cancellation.' Addresses the main decision but leaves the approval boundary unclear.", "'The bank can send the request, but I would approve what personal details it shares first.'"] },
+];
+const CORE_COMMON = COMMON.filter((c) => c.group !== "Additional measures");
+const ADDED_MEASURES = COMMON.filter((c) => c.group === "Additional measures");
+const ADDED_MEASURE_IDS = new Set(ADDED_MEASURES.map((c) => c.id));
+const IMPL = [
+  { id: "cue_fit", group: "Context and journey implementation", name: "Cue reflected", ask: "Does the expressed tone fit the cue actually supplied?",
+    guidance: "Check only the assigned emotion or behavior. Do not infer a requirement to disclose, trust or take risks unless the instructions say so.",
+    exampleContext: "Illustrative cue: cautious and doubtful.",
+    anchors: ["Expresses the opposite of a clear, applicable cue.", "Shows the cue only superficially or inconsistently, with a substantial lapse.", "Mostly reflects the cue, with a small lapse.", "Clearly and naturally reflects the applicable cue over its stated scope."],
+    examples: ["The answer is entirely delighted and carefree.", "A brief mention of doubt is followed by an otherwise carefree performance.", "The tone is mostly cautious, with a brief inconsistent flourish.", "'I am not sold yet. I would want the date clear first.'"] },
+  { id: "substance", group: "Context and journey implementation", name: "Substance kept", ask: "Does useful product feedback remain when the cue changes the tone?",
+    guidance: "Judge whether the cue crowds out the product point. Do not reward stronger emotion or a longer answer.",
+    anchors: ["The answer is almost entirely emotion, with no identifiable product feedback.", "Mostly expresses emotion, with only a vague product point.", "Gives concrete product feedback, but emotion partly crowds out the explanation.", "Keeps a clear product point and its explanation while expressing the cue naturally."],
+    examples: ["'Ugh. I am so frustrated.'", "'This is annoying. Fix the app.'", "Names the missing date, but spends most of the answer repeating frustration.", "'I am frustrated that there is no confirmation date; I need to know whether to follow up before renewal.'"] },
+  { id: "trajectory", group: "Context and journey implementation", name: "Trajectory respected", ask: "Does the change from the previous turn fit the instructed direction?", naFirst: true,
+    guidance: "Use this only when the supplied instructions specify a change across turns. Mark Q1, or an untriggered instruction, not applicable. Do not infer a required change from an unassigned future journey.",
+    exampleContext: "Illustrative instructions: move from mild doubt to noticeably greater frustration at this turn.",
+    anchors: ["Changes in the opposite direction from the clear, applicable instruction.", "Shows little or no change where a clear change was instructed.", "Changes in the instructed direction, but the size or timing is a little off.", "Changes in the instructed direction and degree at the relevant turn, without unnecessary exaggeration."],
+    examples: ["Becomes more cheerful and relaxed instead.", "Stays mildly doubtful with no discernible shift.", "Becomes a little more frustrated, but less than the supplied shift calls for.", "Clearly becomes more frustrated while still addressing the product question."] },
 ];
 const ALL_CRIT = [...COMMON, ...IMPL];
 const EVALUATORS = [
@@ -611,7 +667,7 @@ function reviewsFor(itemIdStr) {
 function myReview(itemIdStr, create) {
   const ek = evalKey(STORE.reviewer.lane, STORE.reviewer.name);
   STORE.reviews[ek] = STORE.reviews[ek] || {};
-  if (!STORE.reviews[ek][itemIdStr] && create) STORE.reviews[ek][itemIdStr] = { scores: {}, flags: {}, startedAt: new Date().toISOString() };
+  if (!STORE.reviews[ek][itemIdStr] && create) STORE.reviews[ek][itemIdStr] = { scores: {}, flags: {}, startedAt: new Date().toISOString(), ...(STORE.reviewer.lane === "human" ? { rubricVersion: HUMAN_RUBRIC_VERSION } : {}) };
   return STORE.reviews[ek][itemIdStr] || null;
 }
 function reviewStage(r) {
@@ -624,7 +680,9 @@ function scoreVal(r, cid) { const s = r && r.scores && r.scores[cid]; return s ?
 /* Aggregate score for one evaluator lane on one item: median across reviewers of that lane. */
 function laneScore(itemIdStr, lane, cid) {
   const vals = reviewsFor(itemIdStr).filter((x) => lane === "all" || x.lane === lane)
-    .map((x) => (cid in COMMON_IDX ? (x.r.commonAudit ? x.r.commonAudit[cid] : scoreVal(x.r, cid)) : scoreVal(x.r, cid)))
+    .map((x) => ADDED_MEASURE_IDS.has(cid)
+      ? (x.r.additionalAudit ? x.r.additionalAudit[cid] : scoreVal(x.r, cid))
+      : (cid in COMMON_IDX ? (x.r.commonAudit ? x.r.commonAudit[cid] : scoreVal(x.r, cid)) : scoreVal(x.r, cid)))
     .filter((v) => typeof v === "number");
   return median(vals);
 }
@@ -1078,7 +1136,7 @@ function progBar(run) {
 /* ---------------- LLM judge ---------------- */
 function judgePrompt(item, pass) {
   const { run, i, q, turn } = item;
-  const crits = pass === "impl" ? IMPL : COMMON;
+  const crits = pass === "impl" ? JUDGE_IMPL : JUDGE_COMMON;
   const prior = run.turns.slice(0, i).map((t, k) => `Q${k + 1}: ${questionsOf(run.cfg.product)[k].question}\nA${k + 1}: ${t.reply}`).join("\n\n");
   const lines = crits.map((c) => `- ${c.id} (${c.name}): ${c.ask}\n  0 = ${c.anchors[0]}\n  1 = ${c.anchors[1]}\n  2 = ${c.anchors[2]}\n  3 = ${c.anchors[3]}`).join("\n");
   let ctx = `Approved persona profile:\n${runPersonaText(run)}\n\nEarlier replies in this interview:\n${prior || "(none, this is the first question)"}\n\nQuestion ${i + 1}${isScreen(q) ? " (shown with a product screen)" : " (topic-only, no screen)"}:\n${q.question}\n\nReply to score:\n${turn.reply}`;
@@ -1091,7 +1149,7 @@ function judgePrompt(item, pass) {
 function judgeRunSummaryPrompt(run, items) {
   const qs = questionsOf(run.cfg.product);
   const block = items.map((it) => {
-    const line = COMMON.map((c) => `${c.id}:${fmtNum(scoreVal(it.rev, c.id))}`).join(", ");
+    const line = JUDGE_COMMON.map((c) => `${c.id}:${fmtNum(scoreVal(it.rev, c.id))}`).join(", ");
     return `Q${it.i + 1}: ${qs[it.i].question}\nReply: ${it.turn.reply}\nScores: ${line}`;
   }).join("\n\n");
   const setup = run.cfg.arm === "grounded"
@@ -1122,14 +1180,30 @@ async function judgeItem(id, judgeCfg) {
     });
     if (out && out.factual_concern) rev.flags.factual = { on: true, note: out.factual_concern };
   };
-  const r1 = await chat(judgePrompt(item, "common"), { temperature: 0, maxTokens: 900, json: judgeCfg.provider !== "azure-anthropic", deployment: judgeCfg.deployment, model: judgeCfg.model, apiVersion: judgeCfg.apiVersion, provider: judgeCfg.provider });
-  apply(parseJsonLoose(r1.text), COMMON);
+  const r1 = await chat(judgePrompt(item, "common"), {
+    temperature: 0,
+    maxTokens: 900,
+    json: judgeCfg.provider !== "azure-anthropic",
+    deployment: judgeCfg.deployment,
+    model: judgeCfg.model,
+    apiVersion: judgeCfg.apiVersion,
+    provider: judgeCfg.provider,
+  });
+  apply(parseJsonLoose(r1.text), JUDGE_COMMON);
   rev.commonSubmittedAt = new Date().toISOString();
-  rev.commonAudit = Object.fromEntries(COMMON.map((c) => [c.id, scoreVal(rev, c.id)]));
+  rev.commonAudit = Object.fromEntries(JUDGE_COMMON.map((c) => [c.id, scoreVal(rev, c.id)]));
   if (item.run.cfg.arm === "grounded") {
-    const r2 = await chat(judgePrompt(item, "impl"), { temperature: 0, maxTokens: 700, json: judgeCfg.provider !== "azure-anthropic", deployment: judgeCfg.deployment, model: judgeCfg.model, apiVersion: judgeCfg.apiVersion, provider: judgeCfg.provider });
-    apply(parseJsonLoose(r2.text), IMPL);
-  } else IMPL.forEach((c) => (rev.scores[c.id] = { v: "na", evidence: [], note: "Baseline: no journey supplied." }));
+    const r2 = await chat(judgePrompt(item, "impl"), {
+      temperature: 0,
+      maxTokens: 700,
+      json: judgeCfg.provider !== "azure-anthropic",
+      deployment: judgeCfg.deployment,
+      model: judgeCfg.model,
+      apiVersion: judgeCfg.apiVersion,
+      provider: judgeCfg.provider,
+    });
+    apply(parseJsonLoose(r2.text), JUDGE_IMPL);
+  } else JUDGE_IMPL.forEach((c) => (rev.scores[c.id] = { v: "na", evidence: [], note: "Baseline: no journey supplied." }));
   rev.implSubmittedAt = new Date().toISOString();
   rev.updatedAt = rev.implSubmittedAt;
   STORE.reviews[ek][id] = rev;
@@ -1206,12 +1280,12 @@ function exportAll() {
   download(`experiment-studio-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(out, null, 2));
 }
 function exportScoresCsv() {
-  const rows = [["evaluator", "item", "anon_code", "run_id", "arm", "journey", "question", ...ALL_CRIT.map((c) => c.id), ...COMMON.map((c) => "common_audit_" + c.id), "factual_concern", "illustrative", "common_submitted_at", "impl_submitted_at"]];
+  const rows = [["evaluator", "item", "anon_code", "run_id", "arm", "journey", "question", ...ALL_CRIT.map((c) => c.id), ...COMMON.map((c) => "common_audit_" + c.id), "factual_concern", "illustrative", "common_submitted_at", "impl_submitted_at", "rubric_version", "additional_submitted_at", "additional_rubric_version"]];
   Object.entries(STORE.reviews).forEach(([ek, items]) => Object.entries(items).forEach(([id, r]) => {
     const it = itemContext(id); if (!it) return;
     rows.push([ek, id, anonCode(id), it.run.id, it.run.cfg.arm, it.run.cfg.journey || "", it.i + 1,
       ...ALL_CRIT.map((c) => (scoreVal(r, c.id) ?? "")), ...COMMON.map((c) => (r.commonAudit ? r.commonAudit[c.id] ?? "" : "")),
-      r.flags && r.flags.factual && r.flags.factual.on ? (r.flags.factual.note || "yes") : "", r.demo ? "yes" : "", r.commonSubmittedAt || "", r.implSubmittedAt || ""]);
+      r.flags && r.flags.factual && r.flags.factual.on ? (r.flags.factual.note || "yes") : "", r.demo ? "yes" : "", r.commonSubmittedAt || "", r.implSubmittedAt || "", r.rubricVersion || "", r.additionalSubmittedAt || "", r.additionalRubricVersion || ""]);
   }));
   download("experiment-studio-scores.csv", rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n"), "text/csv");
 }
@@ -1234,8 +1308,12 @@ function cleanReview(r) {
   ALL_CRIT.forEach((c) => { const sc = cleanScore(r.scores && r.scores[c.id]); if (sc) out.scores[c.id] = sc; });
   const f = r.flags && r.flags.factual;
   if (f && typeof f === "object") out.flags.factual = { on: !!f.on, note: isStr(f.note, 4000) ? f.note : "" };
-  ["startedAt", "updatedAt", "commonSubmittedAt", "implSubmittedAt"].forEach((k) => { if (isStr(r[k], 40)) out[k] = r[k]; });
-  if (r.commonAudit && typeof r.commonAudit === "object") out.commonAudit = Object.fromEntries(COMMON.map((c) => [c.id, r.commonAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.commonAudit[c.id]) ? r.commonAudit[c.id] : undefined]));
+  ["startedAt", "updatedAt", "commonSubmittedAt", "implSubmittedAt", "additionalSubmittedAt"].forEach((k) => { if (isStr(r[k], 40)) out[k] = r[k]; });
+  if (r.commonAudit && typeof r.commonAudit === "object") out.commonAudit = Object.fromEntries(COMMON.filter((c) => Object.prototype.hasOwnProperty.call(r.commonAudit, c.id)).map((c) => [c.id, r.commonAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.commonAudit[c.id]) ? r.commonAudit[c.id] : undefined]));
+  if (isStr(r.rubricVersion, 80)) out.rubricVersion = r.rubricVersion;
+  if (isStr(r.additionalRubricVersion, 80)) out.additionalRubricVersion = r.additionalRubricVersion;
+  if (r.additionalAudit && typeof r.additionalAudit === "object") out.additionalAudit = Object.fromEntries(ADDED_MEASURES.filter((c) => Object.prototype.hasOwnProperty.call(r.additionalAudit, c.id)).map((c) => [c.id, r.additionalAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.additionalAudit[c.id]) ? r.additionalAudit[c.id] : undefined]));
+  if (Array.isArray(r.auditTrail)) out.auditTrail = r.auditTrail.filter((a) => a && isStr(a.at, 40) && a.scores && typeof a.scores === "object").map((a) => ({ at: a.at, scores: Object.fromEntries(ALL_CRIT.filter((c) => Object.prototype.hasOwnProperty.call(a.scores, c.id) && (a.scores[c.id] === "na" || [0, 1, 2, 3].includes(a.scores[c.id]))).map((c) => [c.id, a.scores[c.id]])) }));
   if (r.demo) out.demo = true;
   return out;
 }
