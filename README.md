@@ -192,8 +192,10 @@ interview studies. It has four workspaces:
   bio with demographics". You can then step through the interview question by question,
   with the exact prompt split into Blocks A–E. All 756 saved answers are reproduced
   exactly from the recorded messages.
-- **Evaluate.** Blind, anonymized human scoring on five common criteria (0–3) plus journey
-  checks, with an optional LLM-judge lane.
+- **Evaluate.** Human scoring on five core criteria (0–3), plus human likeness,
+  contextual responsiveness and separate journey checks. Each human score has a
+  plain-language definition and an illustrative example. The optional LLM-judge
+  lane retains its earlier rubric.
 - **Compare.** The row of blocks has one block per emotional cycle, labelled "Emotional
   cycle N · feeling". Each block has a Brief cue / Detailed cue switch. Click or drag a
   block onto a slot; its matched baseline fills the other. Read score differences per
@@ -426,8 +428,10 @@ no `pip install`, Node.js or notebook server.
 - **Notebooks.** Run them in Colab or locally. They expect the team datasets from the Drive
   and Azure credentials in environment variables.
 
-Reviews and runs made in Experiment Studio are stored in that browser's local storage. Use
-**Data → Export everything (JSON)** to share them with teammates.
+Reviews and runs are stored locally and synced to the existing Firebase workspace
+when **Team sync online** is shown. **Data → Export everything (JSON)** makes a backup.
+The [human rubric update notes](v3_conversation_loop_evaluation/experiment_studio/README.md#human-rubric-update---12-november-2026)
+explain the two added score fields, historical-review preservation and tests.
 
 ---
 

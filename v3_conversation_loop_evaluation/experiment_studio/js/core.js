@@ -11,6 +11,7 @@ Object.values(DATA.cycles).forEach((c) => { c.short_title = c.short_title.replac
 const NEUTRAL = "patience: medium; trust: medium; mood: neutral";
 const LOOP_VERSION = "conversation_loop v3 (5-block)";
 const STORE_KEY = "experiment_studio_v1";
+const CLOUD_SCHEMA_VERSION = 1;
 
 /* ---------------- catalogue ---------------- */
 const PRODUCTS = [
@@ -76,9 +77,8 @@ const PROFILE_FREQ = {
   each: { name: "Profile restated every turn", sub: "The approved profile is repeated in each turn's message." },
 };
 
-/* Rubric: five common criteria plus journey implementation checks.
-   Anchors are a working draft for the team to refine. */
-const COMMON = [
+/* Preserve the automated judge rubric while human guidance is revised separately. */
+const JUDGE_COMMON = [
   { id: "persona", group: "Behavioral consistency", name: "Persona consistency", ask: "Does the reply sound like the approved profile?",
     support: "profile",
     anchors: ["Contradicts the profile, or reads as a generic assistant.", "Mostly generic; a weak link to who she is.",
@@ -100,7 +100,7 @@ const COMMON = [
     anchors: ["Nothing the team could act on.", "An obvious or generic takeaway.",
       "A clear thing to investigate, preserve or change.", "A non-obvious direction the team could test."] },
 ];
-const IMPL = [
+const JUDGE_IMPL = [
   { id: "cue_fit", group: "Context and journey implementation", name: "Cue reflected", ask: "Do tone and stance match the cue supplied at this turn?",
     anchors: ["Opposite of the cue.", "Barely reflects it.", "Recognizably reflects it.", "Clearly and naturally reflects it."] },
   { id: "substance", group: "Context and journey implementation", name: "Substance kept", ask: "Does the cue color the reply without crowding out product feedback?",
@@ -108,6 +108,63 @@ const IMPL = [
   { id: "trajectory", group: "Context and journey implementation", name: "Trajectory respected", ask: "Does the shift from the previous turn follow the journey's direction?",
     naFirst: true,
     anchors: ["Moves against the journey.", "Flat where the journey moves.", "Moves in the right direction.", "Matches the direction and size of the move."] },
+];
+
+/* Human rubric: the five core criteria stay separate from the two added measures.
+   Existing score IDs, values and review records are never migrated or backfilled. */
+const HUMAN_RUBRIC_VERSION = "2026-11-12-human-v2";
+const COMMON = [
+  { id: "persona", group: "Behavioral consistency", name: "Persona consistency", ask: "Does the answer fit the supplied profile and scenario?", support: "profile",
+    guidance: "Judge compatibility, not how often the answer mentions profile traits. A brief answer can earn 3. A role supplied by a hypothetical question is allowed.",
+    exampleContext: "Illustrative profile: an operations manager; no business ownership or household arrangements are specified.",
+    anchors: ["Contradicts a central profile fact, or invents personal history that changes the answer's basis.", "Adds an important unsupported personal detail, or has a substantial unresolved mismatch with the profile.", "Fits overall, with a small unsupported detail or mismatch that does not change the main point.", "Fits the explicit profile and the question's scenario, without invented personal history."],
+    examples: ["'As the owner of this business...' when ownership was never supplied and drives the decision.", "'My partner handles all my subscriptions,' used to explain the answer, though no partner was supplied.", "'I would check this over my usual morning coffee,' where that incidental habit was not supplied.", "'I would check the renewal date first.' No biography needs to be repeated."] },
+  { id: "conversation", group: "Behavioral consistency", name: "Conversation consistency", ask: "Does the answer fit what was said earlier, allowing for new information?", support: "history", naFirst: true,
+    guidance: "A reasonable change of mind or a new hypothetical is not a contradiction. The answer does not need to repeat earlier concerns. Mark Q1 not applicable.",
+    exampleContext: "Illustrative earlier answer: 'I would keep the service until I check whether my family uses it.'",
+    anchors: ["Clearly contradicts an important earlier statement or decision without a reasonable explanation.", "Has a substantial unresolved mismatch that makes the earlier and current positions hard to reconcile.", "Fits overall, with a small inconsistency that leaves the main position intact.", "Remains consistent, or changes reasonably because of new information or a changed scenario."],
+    examples: ["'I already canceled it without checking,' with no new information or explanation.", "'Whether anyone else uses it has no bearing on my decision,' without reconciling the earlier condition.", "Still waits for the same check, but changes a minor incidental detail about when to review it.", "'Now that I know no one else uses it, I would cancel.' The new information explains the change."] },
+  { id: "specificity", group: "Product feedback", name: "Specificity", ask: "How clearly does the answer identify a particular product point?", support: "product",
+    guidance: "Score what the point is, not why it matters. A concrete strength and a concrete problem are equally eligible. Do not invent details to improve the score.",
+    anchors: ["Gives only a general reaction; no particular product point is identifiable.", "Names a broad area, but the particular need, benefit or problem is unclear.", "Identifies a particular need, feature, benefit, problem or requirement.", "Precisely identifies the point and a relevant condition, interaction or distinguishing detail."],
+    examples: ["'It looks good.'", "'Privacy matters.'", "'Show who can read a shared summary.'", "'Before I share a summary, show the recipient and exactly which entries it includes.'"] },
+  { id: "consequence", group: "Product feedback", name: "User consequence", ask: "How clearly does the answer explain the effect on the user?", support: "product",
+    guidance: "Count effects actually expressed, not effects the reviewer imagines. A reason not to use the product or a strength worth keeping can score highly.",
+    anchors: ["States no effect on the user's task, decision, trust, access or willingness to use it.", "States only a vague effect, such as greater ease or a better experience.", "Explains a concrete effect on the user's task, decision, trust, access or willingness to use it.", "Explains that effect with a meaningful condition, constraint or trade-off showing when or why it matters."],
+    examples: ["'Add a confirmation date.' No effect is stated.", "'It would be easier.'", "'I would not have to keep checking whether the cancellation went through.'", "'With renewal tomorrow, a confirmation deadline would tell me whether I need to follow up before another charge.'"] },
+  { id: "insight", group: "Product feedback", name: "Product insight", ask: "How clearly does the answer support a useful product implication?", support: "product",
+    guidance: "The implication can be something to investigate, preserve or change. It need not be novel. The participant need not propose a solution; the reviewer may state an implication supported by their words.",
+    exampleContext: "These examples illustrate supported implications. Factual concerns remain a separate flag.",
+    anchors: ["Supports no discernible product decision or investigation.", "Suggests a broad direction, but the reviewer must add substantial interpretation to make it useful.", "Supports a clear implication: a need, adoption barrier, feature expectation or strength to preserve.", "Supports a focused decision or testable hypothesis through a relevant condition, priority, trade-off or distinction between alternatives."],
+    examples: ["'I do not have anything to say about it.'", "'Make it better.'", "'I need to know when cancellation is confirmed.' This supports investigating status information.", "'A deadline matters most when renewal is near; otherwise I can wait.' This supports testing when a deadline changes follow-up decisions."] },
+  { id: "likeness", group: "Additional measures", name: "Human likeness", ask: "Does the answer sound like a natural contribution to an interview?",
+    guidance: "Judge expression separately from correctness, persona consistency and product value. Brevity, formality, dialect and fluent speech are not faults. Do not reward slang, distress or disclosure.",
+    anchors: ["Mostly reads like assistant output, a scripted performance or a generic report.", "Repeated stock phrases, mechanical structure or unnecessary explanation substantially weaken naturalness.", "Mostly sounds natural, with occasional formulaic or unnecessarily polished phrasing.", "Sounds natural for this exchange, with appropriate wording and detail and no conspicuous templating."],
+    examples: ["'As an AI assistant, I can provide a comprehensive evaluation of this interface.'", "An ordinary reply repeatedly uses report-style introductions and conclusions.", "'I would check the date first. Overall, this would enhance my user experience.'", "'I would check the date first. If it is missing, I would leave it for now.'"] },
+  { id: "context", group: "Additional measures", name: "Contextual responsiveness", ask: "Does the answer address this question using the situation actually presented?", support: "product",
+    guidance: "Judge the current question and scenario, not earlier-turn consistency. A reasonable interpretation, privacy boundary, uncertainty or decision not to act can earn 3. For scores below 3, note question relevance, situation fit, or both.",
+    exampleContext: "Illustrative question: 'What would you let the bank handle, and what would you want to approve yourself?'",
+    anchors: ["Misses the central question or answers a materially different situation.", "Addresses only part of the question, missing central information or substantially misreading the situation.", "Addresses the central question and information, with a minor omission or mismatch.", "Addresses the question meaningfully given the available information, including reasonable uncertainty or boundaries."],
+    examples: ["'I would apply for a mortgage.'", "'A dashboard would be useful,' without addressing the authorization decision.", "'I would let the bank submit the cancellation.' Addresses the main decision but leaves the approval boundary unclear.", "'The bank can send the request, but I would approve what personal details it shares first.'"] },
+];
+const CORE_COMMON = COMMON.filter((c) => c.group !== "Additional measures");
+const ADDED_MEASURES = COMMON.filter((c) => c.group === "Additional measures");
+const ADDED_MEASURE_IDS = new Set(ADDED_MEASURES.map((c) => c.id));
+const IMPL = [
+  { id: "cue_fit", group: "Context and journey implementation", name: "Cue reflected", ask: "Does the expressed tone fit the cue actually supplied?",
+    guidance: "Check only the assigned emotion or behavior. Do not infer a requirement to disclose, trust or take risks unless the instructions say so.",
+    exampleContext: "Illustrative cue: cautious and doubtful.",
+    anchors: ["Expresses the opposite of a clear, applicable cue.", "Shows the cue only superficially or inconsistently, with a substantial lapse.", "Mostly reflects the cue, with a small lapse.", "Clearly and naturally reflects the applicable cue over its stated scope."],
+    examples: ["The answer is entirely delighted and carefree.", "A brief mention of doubt is followed by an otherwise carefree performance.", "The tone is mostly cautious, with a brief inconsistent flourish.", "'I am not sold yet. I would want the date clear first.'"] },
+  { id: "substance", group: "Context and journey implementation", name: "Substance kept", ask: "Does useful product feedback remain when the cue changes the tone?",
+    guidance: "Judge whether the cue crowds out the product point. Do not reward stronger emotion or a longer answer.",
+    anchors: ["The answer is almost entirely emotion, with no identifiable product feedback.", "Mostly expresses emotion, with only a vague product point.", "Gives concrete product feedback, but emotion partly crowds out the explanation.", "Keeps a clear product point and its explanation while expressing the cue naturally."],
+    examples: ["'Ugh. I am so frustrated.'", "'This is annoying. Fix the app.'", "Names the missing date, but spends most of the answer repeating frustration.", "'I am frustrated that there is no confirmation date; I need to know whether to follow up before renewal.'"] },
+  { id: "trajectory", group: "Context and journey implementation", name: "Trajectory respected", ask: "Does the change from the previous turn fit the instructed direction?", naFirst: true,
+    guidance: "Use this only when the supplied instructions specify a change across turns. Mark Q1, or an untriggered instruction, not applicable. Do not infer a required change from an unassigned future journey.",
+    exampleContext: "Illustrative instructions: move from mild doubt to noticeably greater frustration at this turn.",
+    anchors: ["Changes in the opposite direction from the clear, applicable instruction.", "Shows little or no change where a clear change was instructed.", "Changes in the instructed direction, but the size or timing is a little off.", "Changes in the instructed direction and degree at the relevant turn, without unnecessary exaggeration."],
+    examples: ["Becomes more cheerful and relaxed instead.", "Stays mildly doubtful with no discernible shift.", "Becomes a little more frustrated, but less than the supplied shift calls for.", "Clearly becomes more frustrated while still addressing the product question."] },
 ];
 const ALL_CRIT = [...COMMON, ...IMPL];
 const EVALUATORS = [
@@ -170,17 +227,252 @@ function loadStore() {
   s.draft = s.draft || null;          // design in progress
   s.ui = s.ui || {};
   s.conn = s.conn || null;
+  const defaults = window.STUDIO_CLOUD_DEFAULT || {};
+  const firebase = defaults.firebase || {};
+  s.cloud = s.cloud || {};
+  s.cloud.enabled = !!(s.cloud.enabled ?? defaults.enabled);
+  s.cloud.workspaceId = s.cloud.workspaceId || defaults.workspaceId || "accenture-northwestern-eval";
+  s.cloud.passcode = s.cloud.passcode || defaults.passcode || "";
+  s.cloud.lastMigrationId = s.cloud.lastMigrationId || "";
+  s.cloud.migratedAt = s.cloud.migratedAt || "";
+  s.cloud.firebase = {
+    apiKey: (s.cloud.firebase && s.cloud.firebase.apiKey) || firebase.apiKey || "",
+    authDomain: (s.cloud.firebase && s.cloud.firebase.authDomain) || firebase.authDomain || "",
+    projectId: (s.cloud.firebase && s.cloud.firebase.projectId) || firebase.projectId || "",
+    appId: (s.cloud.firebase && s.cloud.firebase.appId) || firebase.appId || "",
+    storageBucket: (s.cloud.firebase && s.cloud.firebase.storageBucket) || firebase.storageBucket || "",
+    messagingSenderId: (s.cloud.firebase && s.cloud.firebase.messagingSenderId) || firebase.messagingSenderId || "",
+  };
   return s;
 }
 let saveTimer = null;
+let suppressCloudPush = 0;
 function persist(immediate) {
   clearTimeout(saveTimer);
   const write = () => {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
     catch (e) { toast("This browser's storage is full. Export your work from the menu to keep it."); }
+    if (!suppressCloudPush) CloudSync.queuePush("persist");
   };
   if (immediate) write(); else saveTimer = setTimeout(write, 250);
 }
+function persistWithoutCloud(immediate) {
+  suppressCloudPush++;
+  try { persist(immediate); } finally { suppressCloudPush--; }
+}
+function suppressCloud(fn) {
+  suppressCloudPush++;
+  try { return fn(); } finally { suppressCloudPush--; }
+}
+
+/* ---------------- shared sync (Firebase) ---------------- */
+function cloudCfg() { return STORE.cloud || (STORE.cloud = {}); }
+function firebaseCfg() { const c = cloudCfg(); return c.firebase || (c.firebase = {}); }
+function reviewerLabel() {
+  return (STORE.reviewer && STORE.reviewer.name && STORE.reviewer.name.trim()) || (STORE.reviewer && STORE.reviewer.lane === "jev" ? "Jev" : "Reviewer");
+}
+function cloudStateLabel() {
+  if (!cloudCfg().enabled) return "Local only";
+  const s = CloudSync.state.status;
+  if (s === "online") return "Team sync online";
+  if (s === "connecting") return "Connecting";
+  if (s === "error") return "Sync error";
+  return "Offline";
+}
+function cloudStatusDot() {
+  if (!cloudCfg().enabled) return "#d3d0e2";
+  if (CloudSync.state.status === "online") return "var(--pos)";
+  if (CloudSync.state.status === "connecting") return "#e0ad4b";
+  return "#d06a77";
+}
+function storeSyncSlice() {
+  return {
+    reviews: STORE.reviews || {},
+    observations: STORE.observations || [],
+    liveRuns: STORE.liveRuns || {},
+    liveStudies: STORE.liveStudies || {},
+  };
+}
+function cloneObj(x) { return safeJson(JSON.stringify(x), {}); }
+function reviewStamp(r) {
+  if (!r || typeof r !== "object") return "";
+  return r.updatedAt || r.implSubmittedAt || r.commonSubmittedAt || r.startedAt || "";
+}
+function mergeByTimestamp(a, b, tsKey) {
+  if (!a) return b;
+  if (!b) return a;
+  const ta = a[tsKey] || "";
+  const tb = b[tsKey] || "";
+  if (tb > ta) return b;
+  return a;
+}
+function mergeReviews(base, incoming) {
+  const out = cloneObj(base);
+  Object.entries(incoming || {}).forEach(([ek, items]) => {
+    out[ek] = out[ek] || {};
+    Object.entries(items || {}).forEach(([id, rev]) => {
+      const curr = out[ek][id];
+      if (!curr) out[ek][id] = rev;
+      else out[ek][id] = reviewStamp(rev) > reviewStamp(curr) ? rev : curr;
+    });
+  });
+  return out;
+}
+function mergeObjMap(base, incoming, tsKey) {
+  const out = cloneObj(base);
+  Object.entries(incoming || {}).forEach(([id, row]) => {
+    out[id] = mergeByTimestamp(out[id], row, tsKey);
+  });
+  return out;
+}
+function mergeObservations(base, incoming) {
+  const byId = {};
+  (base || []).forEach((o) => { if (o && o.id) byId[o.id] = o; });
+  (incoming || []).forEach((o) => {
+    if (!o || !o.id) return;
+    const curr = byId[o.id];
+    byId[o.id] = !curr || (o.at || "") > (curr.at || "") ? o : curr;
+  });
+  return Object.values(byId);
+}
+function mergeSyncData(base, incoming) {
+  const a = base || {};
+  const b = incoming || {};
+  return {
+    reviews: mergeReviews(a.reviews || {}, b.reviews || {}),
+    observations: mergeObservations(a.observations || [], b.observations || []),
+    liveRuns: mergeObjMap(a.liveRuns || {}, b.liveRuns || {}, "createdAt"),
+    liveStudies: mergeObjMap(a.liveStudies || {}, b.liveStudies || {}, "createdAt"),
+  };
+}
+function applySyncSlice(slice) {
+  const merged = mergeSyncData(storeSyncSlice(), slice || {});
+  const before = JSON.stringify(storeSyncSlice());
+  const after = JSON.stringify(merged);
+  if (before === after) return false;
+  STORE.reviews = merged.reviews;
+  STORE.observations = merged.observations;
+  STORE.liveRuns = merged.liveRuns;
+  STORE.liveStudies = merged.liveStudies;
+  return true;
+}
+const CloudSync = {
+  state: { status: "idle", message: "", lastSyncAt: "", writes: 0 },
+  app: null,
+  db: null,
+  docRef: null,
+  unsub: null,
+  pushTimer: null,
+  pushBusy: false,
+  pushPending: false,
+  ready() {
+    const c = cloudCfg();
+    const f = firebaseCfg();
+    return !!(c.enabled && c.workspaceId && f.apiKey && f.projectId && f.appId);
+  },
+  setStatus(status, message) {
+    this.state.status = status;
+    this.state.message = message || "";
+    this.state.lastSyncAt = new Date().toISOString();
+    if (typeof App !== "undefined" && App.renderSoon) App.renderSoon();
+  },
+  reset() {
+    if (this.unsub) this.unsub();
+    this.unsub = null;
+    this.docRef = null;
+    this.db = null;
+    this.app = null;
+  },
+  init() {
+    this.reset();
+    if (!this.ready()) {
+      this.setStatus(cloudCfg().enabled ? "offline" : "idle", cloudCfg().enabled ? "Missing Firebase config" : "");
+      return;
+    }
+    if (!(window.firebase && firebase.initializeApp && firebase.firestore)) {
+      this.setStatus("error", "Firebase SDK not loaded");
+      return;
+    }
+    try {
+      const cfg = firebaseCfg();
+      const key = cfg.projectId || "default";
+      const existing = firebase.apps.find((x) => x.name === "studio-" + key);
+      this.app = existing || firebase.initializeApp(cfg, "studio-" + key);
+      this.db = this.app.firestore();
+      this.docRef = this.db.collection("studioWorkspaces").doc(cloudCfg().workspaceId);
+      this.setStatus("connecting", "Connecting to Firestore");
+      this.unsub = this.docRef.onSnapshot((snap) => {
+        if (!snap.exists) {
+          this.setStatus("online", "Workspace created");
+          this.queuePush("bootstrap");
+          return;
+        }
+        const doc = snap.data() || {};
+        if (cloudCfg().passcode && doc.passcode && doc.passcode !== cloudCfg().passcode) {
+          this.setStatus("error", "Passcode mismatch for this workspace");
+          return;
+        }
+        if (applySyncSlice(doc.payload || {})) {
+          suppressCloud(() => persistWithoutCloud(true));
+          if (typeof App !== "undefined" && App.renderSoon) App.renderSoon();
+        }
+        this.setStatus("online", "Synced with team workspace");
+      }, (err) => {
+        this.setStatus("error", String((err && err.message) || err || "Failed to subscribe"));
+      });
+    } catch (err) {
+      this.setStatus("error", String((err && err.message) || err));
+    }
+  },
+  queuePush() {
+    if (!this.ready() || !this.docRef || this.state.status === "error") return;
+    clearTimeout(this.pushTimer);
+    this.pushTimer = setTimeout(() => this.pushNow(), 700);
+  },
+  async pushNow(opts = {}) {
+    if (!this.ready() || !this.docRef) return;
+    if (this.pushBusy) { this.pushPending = true; return; }
+    this.pushBusy = true;
+    try {
+      const local = storeSyncSlice();
+      const migrationId = opts.migrationId || null;
+      await this.db.runTransaction(async (tx) => {
+        const snap = await tx.get(this.docRef);
+        const doc = snap.exists ? (snap.data() || {}) : {};
+        const remote = doc.payload || {};
+        const merged = mergeSyncData(remote, local);
+        const out = {
+          schemaVersion: CLOUD_SCHEMA_VERSION,
+          passcode: cloudCfg().passcode || "",
+          updatedBy: reviewerLabel(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          payload: merged,
+        };
+        if (migrationId) out.migrationIds = firebase.firestore.FieldValue.arrayUnion(migrationId);
+        tx.set(this.docRef, out, { merge: true });
+      });
+      this.state.writes += 1;
+      this.state.lastSyncAt = new Date().toISOString();
+      if (this.state.status !== "online") this.setStatus("online", "Synced with team workspace");
+    } catch (err) {
+      this.setStatus("error", String((err && err.message) || err));
+    } finally {
+      this.pushBusy = false;
+      if (this.pushPending) { this.pushPending = false; this.queuePush(); }
+    }
+  },
+  async migrateNow() {
+    if (!this.ready()) throw new Error("Enable team sync first");
+    const c = cloudCfg();
+    const migrationId = c.lastMigrationId || ("mig_" + hash(String(Date.now()) + ":" + Object.keys(STORE.reviews || {}).length));
+    c.lastMigrationId = migrationId;
+    persistWithoutCloud(true);
+    await this.pushNow({ migrationId });
+    c.migratedAt = new Date().toISOString();
+    persistWithoutCloud(true);
+    return migrationId;
+  },
+};
 
 /* ---------------- prompt assembly ----------------
    Mirrors build_card / build_messages / update_session_state. */
@@ -341,7 +633,7 @@ function reviewsFor(itemIdStr) {
 function myReview(itemIdStr, create) {
   const ek = evalKey(STORE.reviewer.lane, STORE.reviewer.name);
   STORE.reviews[ek] = STORE.reviews[ek] || {};
-  if (!STORE.reviews[ek][itemIdStr] && create) STORE.reviews[ek][itemIdStr] = { scores: {}, flags: {}, startedAt: new Date().toISOString() };
+  if (!STORE.reviews[ek][itemIdStr] && create) STORE.reviews[ek][itemIdStr] = { scores: {}, flags: {}, startedAt: new Date().toISOString(), ...(STORE.reviewer.lane === "human" ? { rubricVersion: HUMAN_RUBRIC_VERSION } : {}) };
   return STORE.reviews[ek][itemIdStr] || null;
 }
 function reviewStage(r) {
@@ -354,7 +646,9 @@ function scoreVal(r, cid) { const s = r && r.scores && r.scores[cid]; return s ?
 /* Aggregate score for one evaluator lane on one item: median across reviewers of that lane. */
 function laneScore(itemIdStr, lane, cid) {
   const vals = reviewsFor(itemIdStr).filter((x) => lane === "all" || x.lane === lane)
-    .map((x) => (cid in COMMON_IDX ? (x.r.commonAudit ? x.r.commonAudit[cid] : scoreVal(x.r, cid)) : scoreVal(x.r, cid)))
+    .map((x) => ADDED_MEASURE_IDS.has(cid)
+      ? (x.r.additionalAudit ? x.r.additionalAudit[cid] : scoreVal(x.r, cid))
+      : (cid in COMMON_IDX ? (x.r.commonAudit ? x.r.commonAudit[cid] : scoreVal(x.r, cid)) : scoreVal(x.r, cid)))
     .filter((v) => typeof v === "number");
   return median(vals);
 }
@@ -589,6 +883,16 @@ function detectHelper() {
       CONN.envConfig = cfg;
       CONN.token = cfg.token || null; // per-session secret that proves the request came from this page
       CONN.helper.hasKey = CONN.helper.hasKey || !!cfg.has_key;
+      if (cfg.firebaseEnabled != null) cloudCfg().enabled = String(cfg.firebaseEnabled).toLowerCase() === "true" || String(cfg.firebaseEnabled) === "1";
+      if (cfg.firebaseWorkspaceId) cloudCfg().workspaceId = cfg.firebaseWorkspaceId;
+      if (cfg.firebasePasscode) cloudCfg().passcode = cfg.firebasePasscode;
+      const f = firebaseCfg();
+      if (cfg.firebaseApiKey) f.apiKey = cfg.firebaseApiKey;
+      if (cfg.firebaseAuthDomain) f.authDomain = cfg.firebaseAuthDomain;
+      if (cfg.firebaseProjectId) f.projectId = cfg.firebaseProjectId;
+      if (cfg.firebaseAppId) f.appId = cfg.firebaseAppId;
+      if (cfg.firebaseStorageBucket) f.storageBucket = cfg.firebaseStorageBucket;
+      if (cfg.firebaseMessagingSenderId) f.messagingSenderId = cfg.firebaseMessagingSenderId;
     }).catch(() => {});
   }).catch(() => {});
 }
@@ -638,6 +942,65 @@ function connModal(after) {
   };
 }
 
+function cloudModal() {
+  const c = cloudCfg();
+  const f = firebaseCfg();
+  const box = openLayer(`
+    <div class="spread"><h2>Team sync (Firebase)</h2><button class="btn ghost sm" data-action="close-layer">Close</button></div>
+    <p class="small muted">Enable this to share reviews, observations and launched runs with the whole team in near real time.</p>
+    <div class="note ${CloudSync.state.status === "online" ? "ok" : CloudSync.state.status === "error" ? "warn" : "focus"}">
+      <b>${esc(cloudStateLabel())}</b>${CloudSync.state.message ? ` · ${esc(CloudSync.state.message)}` : ""}${CloudSync.state.lastSyncAt ? ` · ${esc(fmtTime(CloudSync.state.lastSyncAt))}` : ""}
+    </div>
+    <div class="field"><label><input id="syncEnabled" type="checkbox" ${c.enabled ? "checked" : ""}/> Enable shared sync</label></div>
+    <div class="slot-pair">
+      <div class="field"><label for="syncWorkspace">Workspace id</label><input id="syncWorkspace" value="${esc(c.workspaceId || "")}" placeholder="team-evaluation"/></div>
+      <div class="field"><label for="syncPass">Shared passcode</label><input id="syncPass" type="password" value="${esc(c.passcode || "")}" placeholder="Optional team code"/></div>
+    </div>
+    <h3 style="margin:8px 0 4px">Firebase web config</h3>
+    <div class="field"><label for="fbApiKey">API key</label><input id="fbApiKey" value="${esc(f.apiKey || "")}"/></div>
+    <div class="field"><label for="fbAuthDomain">Auth domain</label><input id="fbAuthDomain" value="${esc(f.authDomain || "")}" placeholder="project-id.firebaseapp.com"/></div>
+    <div class="field"><label for="fbProjectId">Project id</label><input id="fbProjectId" value="${esc(f.projectId || "")}"/></div>
+    <div class="field"><label for="fbAppId">App id</label><input id="fbAppId" value="${esc(f.appId || "")}"/></div>
+    <div class="slot-pair">
+      <div class="field"><label for="fbBucket">Storage bucket</label><input id="fbBucket" value="${esc(f.storageBucket || "")}"/></div>
+      <div class="field"><label for="fbMsg">Messaging sender id</label><input id="fbMsg" value="${esc(f.messagingSenderId || "")}"/></div>
+    </div>
+    <div class="row wrap" style="justify-content:flex-end">
+      <button class="btn" id="syncMigrate">Upload local data now</button>
+      <button class="btn primary" id="syncSave">Save and connect</button>
+    </div>`);
+  const val = (sel) => box.querySelector(sel).value.trim();
+  box.querySelector("#syncSave").onclick = () => {
+    c.enabled = box.querySelector("#syncEnabled").checked;
+    c.workspaceId = val("#syncWorkspace") || "accenture-northwestern-eval";
+    c.passcode = val("#syncPass");
+    c.firebase = {
+      apiKey: val("#fbApiKey"),
+      authDomain: val("#fbAuthDomain"),
+      projectId: val("#fbProjectId"),
+      appId: val("#fbAppId"),
+      storageBucket: val("#fbBucket"),
+      messagingSenderId: val("#fbMsg"),
+    };
+    persistWithoutCloud(true);
+    CloudSync.init();
+    closeLayer();
+    toast(c.enabled ? "Team sync settings saved" : "Shared sync disabled");
+    if (typeof App !== "undefined") App.render();
+  };
+  box.querySelector("#syncMigrate").onclick = async () => {
+    try {
+      box.querySelector("#syncSave").click();
+      if (!cloudCfg().enabled) throw new Error("Enable shared sync first");
+      const mid = await CloudSync.migrateNow();
+      toast("Uploaded local data (" + mid + ")");
+      if (typeof App !== "undefined") App.render();
+    } catch (err) {
+      toast("Sync upload failed: " + (err.message || err));
+    }
+  };
+}
+
 /* Generate (or resume) one run turn by turn. Failed turns can be resumed without touching completed ones. */
 const RUNNING = new Set();
 async function generateRun(runId, onTick) {
@@ -684,7 +1047,7 @@ function progBar(run) {
 /* ---------------- LLM judge ---------------- */
 function judgePrompt(item, pass) {
   const { run, i, q, turn } = item;
-  const crits = pass === "impl" ? IMPL : COMMON;
+  const crits = pass === "impl" ? JUDGE_IMPL : JUDGE_COMMON;
   const prior = run.turns.slice(0, i).map((t, k) => `Q${k + 1}: ${questionsOf(run.cfg.product)[k].question}\nA${k + 1}: ${t.reply}`).join("\n\n");
   const lines = crits.map((c) => `- ${c.id} (${c.name}): ${c.ask}\n  0 = ${c.anchors[0]}\n  1 = ${c.anchors[1]}\n  2 = ${c.anchors[2]}\n  3 = ${c.anchors[3]}`).join("\n");
   let ctx = `Approved persona profile:\n${runPersonaText(run)}\n\nEarlier replies in this interview:\n${prior || "(none, this is the first question)"}\n\nQuestion ${i + 1}${isScreen(q) ? " (shown with a product screen)" : " (topic-only, no screen)"}:\n${q.question}\n\nReply to score:\n${turn.reply}`;
@@ -715,12 +1078,12 @@ async function judgeItem(id, deployment) {
     if (out && out.factual_concern) rev.flags.factual = { on: true, note: out.factual_concern };
   };
   const r1 = await chat(judgePrompt(item, "common"), { temperature: 0, maxTokens: 900, json: true });
-  apply(safeJson(r1.text, {}), COMMON);
+  apply(safeJson(r1.text, {}), JUDGE_COMMON);
   rev.commonSubmittedAt = new Date().toISOString();
-  rev.commonAudit = Object.fromEntries(COMMON.map((c) => [c.id, scoreVal(rev, c.id)]));
+  rev.commonAudit = Object.fromEntries(JUDGE_COMMON.map((c) => [c.id, scoreVal(rev, c.id)]));
   if (item.run.cfg.arm === "grounded") {
     const r2 = await chat(judgePrompt(item, "impl"), { temperature: 0, maxTokens: 700, json: true });
-    apply(safeJson(r2.text, {}), IMPL);
+    apply(safeJson(r2.text, {}), JUDGE_IMPL);
   } else IMPL.forEach((c) => (rev.scores[c.id] = { v: "na", evidence: [], note: "Baseline: no journey supplied." }));
   rev.implSubmittedAt = new Date().toISOString();
   STORE.reviews[ek][id] = rev;
@@ -777,12 +1140,12 @@ function exportAll() {
   download(`experiment-studio-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(out, null, 2));
 }
 function exportScoresCsv() {
-  const rows = [["evaluator", "item", "anon_code", "run_id", "arm", "journey", "question", ...ALL_CRIT.map((c) => c.id), ...COMMON.map((c) => "common_audit_" + c.id), "factual_concern", "illustrative", "common_submitted_at", "impl_submitted_at"]];
+  const rows = [["evaluator", "item", "anon_code", "run_id", "arm", "journey", "question", ...ALL_CRIT.map((c) => c.id), ...COMMON.map((c) => "common_audit_" + c.id), "factual_concern", "illustrative", "common_submitted_at", "impl_submitted_at", "rubric_version", "additional_submitted_at", "additional_rubric_version"]];
   Object.entries(STORE.reviews).forEach(([ek, items]) => Object.entries(items).forEach(([id, r]) => {
     const it = itemContext(id); if (!it) return;
     rows.push([ek, id, anonCode(id), it.run.id, it.run.cfg.arm, it.run.cfg.journey || "", it.i + 1,
       ...ALL_CRIT.map((c) => (scoreVal(r, c.id) ?? "")), ...COMMON.map((c) => (r.commonAudit ? r.commonAudit[c.id] ?? "" : "")),
-      r.flags && r.flags.factual && r.flags.factual.on ? (r.flags.factual.note || "yes") : "", r.demo ? "yes" : "", r.commonSubmittedAt || "", r.implSubmittedAt || ""]);
+      r.flags && r.flags.factual && r.flags.factual.on ? (r.flags.factual.note || "yes") : "", r.demo ? "yes" : "", r.commonSubmittedAt || "", r.implSubmittedAt || "", r.rubricVersion || "", r.additionalSubmittedAt || "", r.additionalRubricVersion || ""]);
   }));
   download("experiment-studio-scores.csv", rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n"), "text/csv");
 }
@@ -805,8 +1168,12 @@ function cleanReview(r) {
   ALL_CRIT.forEach((c) => { const sc = cleanScore(r.scores && r.scores[c.id]); if (sc) out.scores[c.id] = sc; });
   const f = r.flags && r.flags.factual;
   if (f && typeof f === "object") out.flags.factual = { on: !!f.on, note: isStr(f.note, 4000) ? f.note : "" };
-  ["startedAt", "updatedAt", "commonSubmittedAt", "implSubmittedAt"].forEach((k) => { if (isStr(r[k], 40)) out[k] = r[k]; });
-  if (r.commonAudit && typeof r.commonAudit === "object") out.commonAudit = Object.fromEntries(COMMON.map((c) => [c.id, r.commonAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.commonAudit[c.id]) ? r.commonAudit[c.id] : undefined]));
+  ["startedAt", "updatedAt", "commonSubmittedAt", "implSubmittedAt", "additionalSubmittedAt"].forEach((k) => { if (isStr(r[k], 40)) out[k] = r[k]; });
+  if (r.commonAudit && typeof r.commonAudit === "object") out.commonAudit = Object.fromEntries(COMMON.filter((c) => Object.prototype.hasOwnProperty.call(r.commonAudit, c.id)).map((c) => [c.id, r.commonAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.commonAudit[c.id]) ? r.commonAudit[c.id] : undefined]));
+  if (isStr(r.rubricVersion, 80)) out.rubricVersion = r.rubricVersion;
+  if (isStr(r.additionalRubricVersion, 80)) out.additionalRubricVersion = r.additionalRubricVersion;
+  if (r.additionalAudit && typeof r.additionalAudit === "object") out.additionalAudit = Object.fromEntries(ADDED_MEASURES.filter((c) => Object.prototype.hasOwnProperty.call(r.additionalAudit, c.id)).map((c) => [c.id, r.additionalAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.additionalAudit[c.id]) ? r.additionalAudit[c.id] : undefined]));
+  if (Array.isArray(r.auditTrail)) out.auditTrail = r.auditTrail.filter((a) => a && isStr(a.at, 40) && a.scores && typeof a.scores === "object").map((a) => ({ at: a.at, scores: Object.fromEntries(ALL_CRIT.filter((c) => Object.prototype.hasOwnProperty.call(a.scores, c.id) && (a.scores[c.id] === "na" || [0, 1, 2, 3].includes(a.scores[c.id]))).map((c) => [c.id, a.scores[c.id]])) }));
   if (r.demo) out.demo = true;
   return out;
 }

@@ -25,7 +25,7 @@ and has four workspaces:
   Interviews carry neutral numbers shuffled for each reviewer, so the grid
   never reveals which one is the baseline. Work in random order (the default),
   question by question, or interview by interview. A list view groups
-  responses by question. Responses are anonymized. Reviewers score five common criteria from 0 to 3, with zero,
+  responses by question. Responses are anonymized. Reviewers score five core criteria and two additional measures (human likeness and contextual responsiveness) from 0 to 3, with zero,
   unscored and not applicable shown as different states. To attach evidence,
   select words in the answer and drag the chip onto a criterion. Common scores
   are locked for audit before the journey cue is revealed for the
@@ -144,12 +144,14 @@ You can also enter the key directly in **Model connection** without creating
 ### 4. Save and share your work
 
 Reviews, observations, and new runs are saved in that browser's local storage.
-They do not automatically sync to GitHub or to teammates. Use **Data → Export
+When **Team sync online** is shown, the existing Firebase workspace also shares
+evaluations with the team. GitHub does not store these evaluations. Use **Data → Export
 everything (JSON)** to back up or share your work; the recipient can use
 **Data → Import a JSON export**. Use **Export scores (CSV)** for a score table.
 
 Continue using the same browser profile and local URL, including its port.
-A different browser, port, or direct-file URL has separate storage. Export
+A different browser, port, or direct-file URL has separate local storage; cloud
+reviews become available when connected to the same Firebase workspace. Export
 your work before changing these or clearing browser data. A teammate must
 start the dashboard on their own computer; your `127.0.0.1` URL points only
 to your computer.
@@ -253,8 +255,45 @@ the team Drive notebook the original runs used. It is kept in memory only.
 ## Where data lives
 
 Reviews, observations and launched runs are saved in the browser's local
-storage as you work. The **Data** menu exports everything as JSON (which can
-be imported elsewhere) or exports scores as CSV, for example into `results/`.
+storage. The recovered deployment configuration also connects to the existing
+Firebase team workspace. **Team sync online** confirms that cloud sync is active;
+the **Data** menu opens sync settings and exports JSON backups or scores as CSV.
+
+### Human rubric update - 12 November 2026
+
+The five core criteria keep their existing IDs: `persona`, `conversation`,
+`specificity`, `consequence` and `insight`. The additional measures use
+`likeness` (human likeness) and `context` (contextual responsiveness). Both apply
+to baseline and grounded answers and appear separately in Compare results.
+Definitions, boundaries and illustrative examples are shown beside each 0-3
+choice. The three existing journey checks also have clearer guidance and examples.
+The factual-concern flag is unchanged; insight eligibility remains deferred.
+
+New human reviews record `rubricVersion: 2026-11-12-human-v2`. Historical reviews
+are not converted, relabeled or backfilled. Missing new ratings remain unscored.
+On a completed review, **Submit additional measures** saves just the two new
+ratings and their `additionalAudit`, `additionalSubmittedAt` and
+`additionalRubricVersion`, retaining the original scores, submission times and
+common audit. This does not turn historical core scores into scores under the
+new guidance. Automated judge prompts retain their earlier criteria and anchors.
+
+No new Firestore table, collection, document, SQL column or manual row is needed.
+The existing workspace document stores reviews in `payload.reviews`. Each review
+can hold two more score maps, `scores.likeness` and `scores.context`, in the same
+shape as the current criteria: `{v, evidence, note}`. They are written only when
+a reviewer explicitly records them. There is no database migration or bulk update.
+
+The Firebase configuration and sync implementation were recovered from the
+deployed page; rebuilding now retains the existing workspace connection and SDK
+imports. Development checks use isolated in-memory records and a browser preview
+with Firebase and persistence disabled. They must not run against real evaluations.
+
+Run the preservation and rubric checks with:
+
+```sh
+python3 build_studio.py
+node --test tests/human_rubric.test.cjs
+```
 
 ## How comparisons stay matched
 

@@ -128,8 +128,12 @@ const Compare = {
           <div class="row"><span class="small faint">Evaluator</span><div class="seg" role="group" aria-label="Evaluator">${[...EVALUATORS, { id: "all", name: "All" }].map((e) => `<button data-action="lane-cmp" data-lane="${e.id}" aria-pressed="${u.lane === e.id}">${e.name}</button>`).join("")}</div></div></div>
         <div class="crit-board">
           <div class="grp">Behavioral consistency</div><div class="grp g3">Product feedback</div>
-          ${COMMON.map((c) => this.tile(s, c, u)).join("")}
+          ${CORE_COMMON.map((c) => this.tile(s, c, u)).join("")}
         </div>
+      </section>
+      <section class="panel panel-pad" style="margin-bottom:16px">
+        <div class="spread" style="margin-bottom:12px"><div><h2>Additional measures</h2><p class="tiny faint">Human likeness and contextual responsiveness are separate outcomes. Earlier reviews without these ratings stay unscored; they are not counted as zero.</p></div></div>
+        <div class="additional-board">${ADDED_MEASURES.map((c) => this.tile(s, c, u)).join("")}</div>
       </section>
       ${this.critDetail(u, s)}
       ${this.questionPanel(u, s)}
@@ -234,14 +238,14 @@ const Compare = {
     const lanesPresent = new Set(rows.map((r) => r.lane));
     const missing = EVALUATORS.filter((e) => !lanesPresent.has(e.id)).map((e) => e.name);
     // scale difference across the whole study: LLM and Jev mean minus human mean
-    const laneMean = (lane) => mean(studyItems(s).flatMap((id) => reviewsFor(id).filter((x) => x.lane === lane).flatMap((x) => COMMON.map((c) => (x.r.commonAudit ? x.r.commonAudit[c.id] : scoreVal(x.r, c.id))))));
+    const laneMean = (lane) => mean(studyItems(s).flatMap((id) => reviewsFor(id).filter((x) => x.lane === lane).flatMap((x) => CORE_COMMON.map((c) => (x.r.commonAudit ? x.r.commonAudit[c.id] : scoreVal(x.r, c.id))))));
     const hm = laneMean("human");
     const scale = ["llm", "jev"].map((l) => { const m = laneMean(l); return m != null && hm != null ? `${EVALUATORS.find((e) => e.id === l).name} averages ${m - hm >= 0 ? "+" : ""}${(m - hm).toFixed(2)} against humans` : null; }).filter(Boolean);
     const table = (arm) => {
       const rs = rows.filter((r) => r.arm === arm);
       const spread = Object.fromEntries(COMMON.map((c) => { const v = rs.map((r) => scoreVal(r.r, c.id)).filter((x) => typeof x === "number"); return [c.id, v.length > 1 ? Math.max(...v) - Math.min(...v) : 0]; }));
       return `<table class="ev-table"><thead><tr><th>${arm === "b" ? '<span class="dot base"></span> Baseline' : '<span class="dot grnd"></span> Grounded'}</th>${COMMON.map((c) => `<th>${c.name}</th>`).join("")}</tr></thead>
-        <tbody>${rs.map((r) => `<tr><td>${esc(r.ek.replace(/^human:/, "").replace(/^llm:/, "LLM · "))}${r.r.demo ? ' <span class="tiny faint">(illustrative)</span>' : ""}</td>${COMMON.map((c) => { const v = scoreVal(r.r, c.id); return `<td class="${spread[c.id] >= 2 ? "flag" : ""}" title="${esc(((r.r.scores[c.id] || {}).note) || "")}">${v === undefined ? "–" : v === "na" ? "N/A" : v}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="6" class="faint">No judgments</td></tr>`}
+        <tbody>${rs.map((r) => `<tr><td>${esc(r.ek.replace(/^human:/, "").replace(/^llm:/, "LLM · "))}${r.r.demo ? ' <span class="tiny faint">(illustrative)</span>' : ""}</td>${COMMON.map((c) => { const v = scoreVal(r.r, c.id); return `<td class="${spread[c.id] >= 2 ? "flag" : ""}" title="${esc(((r.r.scores[c.id] || {}).note) || "")}">${v === undefined ? "–" : v === "na" ? "N/A" : v}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="${COMMON.length + 1}" class="faint">No judgments</td></tr>`}
         <tr><td class="tiny faint">Disagreement</td>${COMMON.map((c) => `<td class="tiny ${spread[c.id] >= 2 ? "flag" : "faint"}">${spread[c.id] >= 2 ? `${spread[c.id]}-point spread` : spread[c.id] ? "1 point" : "none"}</td>`).join("")}</tr></tbody></table>`;
     };
     return `<div style="margin-top:22px"><div class="spread"><h3>Evaluator comparison</h3><span class="small faint">${[missing.length ? `Missing: ${missing.join(", ")}` : "All three evaluators present", ...scale].join(" · ")}</span></div>

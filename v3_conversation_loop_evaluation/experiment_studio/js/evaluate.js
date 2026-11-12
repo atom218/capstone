@@ -2,7 +2,7 @@
 "use strict";
 
 function evalUi() {
-  STORE.ui.eval = STORE.ui.eval || { view: "home", item: null, open: "persona", scope: null, support: null, filter: "todo" };
+  STORE.ui.eval = STORE.ui.eval || { view: "home", item: null, open: "persona", scope: null, support: null, filter: "todo", progress: "mine" };
   const u = STORE.ui.eval;
   if (u.scope) u.scope = u.scope.filter((id) => studyById(id));
   if (u.item && !itemContext(u.item)) { u.item = null; u.view = "home"; }
@@ -54,6 +54,37 @@ function stageIcon(stage) {
 }
 function cellGlyph(st) { return `<span class="cell-glyph ${st}" aria-hidden="true"></span>`; }
 function stageLabel(st) { return { none: "Not started", started: "In progress", common: "Common scores in, checks left", complete: "Complete" }[st]; }
+function addedMeasuresLocked(rev) {
+  return !!(rev.additionalSubmittedAt || (rev.commonSubmittedAt && ADDED_MEASURES.every((c) => rev.commonAudit && Object.prototype.hasOwnProperty.call(rev.commonAudit, c.id))));
+}
+function firstReviewCriterion(rev, item) {
+  if (!rev || !rev.commonSubmittedAt) return COMMON[0].id;
+  if (!addedMeasuresLocked(rev)) return ADDED_MEASURES.find((c) => scoreVal(rev, c.id) === undefined)?.id || ADDED_MEASURES[0].id;
+  return !rev.implSubmittedAt && item.run.cfg.arm === "grounded" ? IMPL[0].id : COMMON[0].id;
+}
+function criterionLocked(rev, id) {
+  return ADDED_MEASURE_IDS.has(id) ? addedMeasuresLocked(rev) : COMMON_IDX[id] ? !!rev.commonSubmittedAt : !!rev.implSubmittedAt;
+}
+function reviewerNameFromKey(ek) { return ek && ek.startsWith("human:") ? (ek.slice(6).trim() || "Reviewer") : ek || "Reviewer"; }
+function fmtScore(v) { return v === undefined || v === null ? "–" : v === "na" ? "N/A" : String(v); }
+function humanReviewsForItem(itemIdStr) {
+  return reviewsFor(itemIdStr)
+    .filter((x) => x.lane === "human")
+    .map((x) => ({ ...x, name: reviewerNameFromKey(x.ek), st: reviewStage(x.r) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+function teammateHover(itemIdStr) {
+  const hs = humanReviewsForItem(itemIdStr);
+  if (!hs.length) return "No teammate reviews yet";
+  return "Team: " + hs.map((x) => `${x.name} (${stageLabel(x.st).toLowerCase()})`).join(", ");
+}
+const STAGE_RANK = { none: 0, started: 1, common: 2, complete: 3 };
+function strongerStage(a, b) { return (STAGE_RANK[b] || 0) > (STAGE_RANK[a] || 0) ? b : a; }
+/* Team mode: one cell reflects the furthest progress reached by any reviewer in this lane. */
+function laneStage(itemIdStr, lane) {
+  const revs = reviewsFor(itemIdStr).filter((x) => lane === "all" || x.lane === lane);
+  return revs.reduce((best, x) => strongerStage(best, reviewStage(x.r)), "none");
+}
 
 const Evaluate = {
   render() {
@@ -65,9 +96,12 @@ const Evaluate = {
   home(u) {
     const items = queueItems();
     const mine = items.map((id) => ({ id, st: reviewStage(myReview(id)) }));
-    const stOf = Object.fromEntries(mine.map((x) => [x.id, x.st]));
+    const mineOf = Object.fromEntries(mine.map((x) => [x.id, x.st]));
+    const mode = u.progress || "mine";
+    const lane = STORE.reviewer.lane === "human" ? "human" : STORE.reviewer.lane;
+    const stOf = mode === "team" ? Object.fromEntries(items.map((id) => [id, laneStage(id, lane)])) : mineOf;
     const next = mine.find((x) => x.st === "started" || x.st === "common") || mine.find((x) => x.st === "none");
-    const count = (st) => mine.filter((x) => x.st === st).length;
+    const count = (st) => items.filter((id) => stOf[id] === st).length;
     const done = count("complete"), half = count("common") + count("started"), todo = count("none");
     const nameMissing = STORE.reviewer.lane === "human" && !STORE.reviewer.name.trim();
     const blind = blindInterviews(items);
@@ -81,6 +115,7 @@ const Evaluate = {
             ? `<div class="row"><button class="btn primary" data-action="open-item" data-id="${esc(next.id)}">${next.st === "none" ? "Start" : "Resume"} ${anonCode(next.id)}</button>
                <span class="small" style="color:#b7b4d0">${next.st === "none" ? `Next in ${orderLabel}` : stageLabel(next.st)} · Interview ${interviewNumber(next.id, blind)}, Q${parseItem(next.id).i + 1}</span></div>`
             : `<p>Every response in your queue is complete. Open Compare results to see how the arms differ.</p>`}
+          ${mode === "team" ? `<p class="tiny" style="color:#8f8cae">Markers in the matrix below now show team-wide progress across all human reviewers. The Continue button still follows your own queue.</p>` : ""}
           <p class="tiny" style="color:#8f8cae">Interviews are numbered at random for you, and condition labels, the journey, other reviewers' scores and automated notes stay hidden until the final implementation pass.</p>
         </section>
 
@@ -92,6 +127,8 @@ const Evaluate = {
           <div class="spread" style="margin-bottom:14px">
             <div><h3>Your assignments</h3><p class="tray-hint" style="margin:2px 0 0">${(u.qview || "grid") === "grid" ? "Each cell is one response. Select a cell to score it." : "Grouped by question. Select a response to score it."}</p></div>
             <div class="row">
+              <span class="small faint">Cell status</span>
+              <div class="seg" role="group" aria-label="Cell status source">${[["mine", "My marks"], ["team", "Team marks"]].map(([k, l]) => `<button data-action="qprogress" data-k="${k}" aria-pressed="${(u.progress || "mine") === k}">${l}</button>`).join("")}</div>
               <span class="small faint">Work</span>
               <div class="seg" role="group" aria-label="Review order">${[["random", "Random"], ["question", "By question"], ["interview", "By interview"]].map(([k, l]) => `<button data-action="qorder" data-k="${k}" aria-pressed="${(u.order || "random") === k}">${l}</button>`).join("")}</div>
               <div class="seg" role="group" aria-label="View">${[["grid", "Grid"], ["list", "List"]].map(([k, l]) => `<button data-action="qview" data-k="${k}" aria-pressed="${(u.qview || "grid") === k}">${l}</button>`).join("")}</div>
@@ -149,7 +186,7 @@ const Evaluate = {
                 const id = itemId(iv.runId, i);
                 if (!set.has(id)) return `<td><span class="cell-glyph absent" aria-hidden="true"></span></td>`;
                 const st = stOf[id];
-                return `<td><button class="cell${next && next.id === id ? " is-next" : ""}" data-action="open-item" data-id="${esc(id)}" title="${anonCode(id)} · Interview ${iv.n}, Q${i + 1} · ${stageLabel(st)}" aria-label="${anonCode(id)}, interview ${iv.n}, question ${i + 1}, ${stageLabel(st)}">${cellGlyph(st)}</button></td>`;
+                return `<td><button class="cell${next && next.id === id ? " is-next" : ""}" data-action="open-item" data-id="${esc(id)}" title="${anonCode(id)} · Interview ${iv.n}, Q${i + 1} · ${stageLabel(st)} · ${esc(teammateHover(id))}" aria-label="${anonCode(id)}, interview ${iv.n}, question ${i + 1}, ${stageLabel(st)}">${cellGlyph(st)}</button></td>`;
               }).join("")}
               <td class="tot"><div class="rowbar"><i style="width:${(100 * rowDone) / Math.max(1, ids.length)}%"></i></div><span class="tiny faint">${rowDone}/${ids.length}</span></td></tr>`;
           }).join("")}</tbody>
@@ -213,6 +250,12 @@ const Evaluate = {
     const stage = reviewStage(rev);
     const items = queueItems(); const pos = items.indexOf(u.item);
     const locked = !!rev.commonSubmittedAt;
+    const run = it.run;
+    const persona = PERSONAS.find((p) => p.id === run.cfg.persona);
+    const cyc = run.cfg.arm === "grounded" ? DATA.cycles[run.cfg.journey] : null;
+    const cycleName = cyc ? cyc.short_title.replace(/^Cycle \d: /, "") : "";
+    const teamRows = humanReviewsForItem(u.item);
+    const me = (STORE.reviewer.name || "").trim();
     return `<div class="spread" style="margin-bottom:16px">
         <div class="row"><button class="btn ghost" data-action="eval-home">← Queue</button><h2>${anonCode(u.item)}</h2><span class="chip">Interview ${interviewNumber(u.item, blindInterviews(queueSet()))}, Q${it.i + 1}</span><span class="chip">${stageLabel(stage)}</span></div>
         <div class="row"><span class="small faint">${pos >= 0 ? `${pos + 1} of ${items.length}` : "Outside your current queue"}</span>
@@ -221,8 +264,33 @@ const Evaluate = {
       </div>
       <div class="scoring">
         <div class="answer-col">
+          <section class="panel panel-pad">
+            <div class="spread"><h3>This interview setup</h3><span class="small faint">Fixed across Q1-Q7</span></div>
+            <div class="row wrap" style="margin-top:8px">
+              <span class="chip focus">${esc(productOf(run.cfg.product).short)}</span>
+              <span class="chip line">${esc(persona ? persona.variant : run.cfg.persona)}</span>
+              <span class="chip ${run.cfg.arm === "grounded" ? "grnd" : "base"}">${run.cfg.arm === "grounded" ? "Grounded" : "Baseline"}</span>
+              ${cyc ? `<span class="chip line">${esc(cycleName)}</span>` : ""}
+              ${cyc ? `<span class="chip line">${esc(DETAIL[run.cfg.detail].name)} · ${esc(TIMING[run.cfg.timing].name.toLowerCase())}</span>` : ""}
+            </div>
+            <p class="tiny faint" style="margin-top:8px">What changes each question: the question text (and screen when present) plus the live state cue. The approved profile and product pack stay the same for this interview.</p>
+          </section>
+          <section class="panel panel-pad">
+            <div class="spread"><h3>Team evaluations on this response</h3><span class="small faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
+            ${teamRows.length ? `<div class="stack" style="margin-top:8px">${teamRows.map((x) => {
+              const mineTag = me && x.name === me ? " · you" : "";
+              const common = COMMON.map((c) => `${c.id}:${fmtScore(scoreVal(x.r, c.id))}`).join(" ");
+              const impl = IMPL.map((c) => `${c.id}:${fmtScore(scoreVal(x.r, c.id))}`).join(" ");
+              return `<div class="note focus small">
+                <div class="spread"><b>${esc(x.name)}${mineTag}</b><span class="faint">${stageLabel(x.st)}</span></div>
+                <div class="tiny" style="margin-top:4px"><b>Common:</b> ${esc(common)}</div>
+                <div class="tiny" style="margin-top:2px"><b>Implementation:</b> ${esc(impl)}</div>
+              </div>`;
+            }).join("")}</div>` : `<p class="tiny faint" style="margin-top:8px">No human reviewer has scored this response yet.</p>`}
+          </section>
           <section class="panel qbox">
             <div class="qlabel">Question ${it.i + 1} of 7 · ${isScreen(it.q) ? "shown with a product screen" : "topic-only, no screen"}</div>
+            <div class="tiny faint" style="margin:4px 0 10px">${run.cfg.arm === "grounded" ? `Current cue: <code>${esc(it.turn.state_before)}</code>` : "Baseline interview: no journey cue applied."}</div>
             <div class="row" style="align-items:flex-start;gap:14px"><p class="grow">${esc(it.q.question)}</p>
               ${isScreen(it.q) ? `<img class="thumb" src="${it.q.screenshot_data_uri}" alt="Product screen" data-action="zoom" data-pid="${it.run.cfg.product}" data-i="${it.i}"/>` : ""}</div>
           </section>
@@ -239,7 +307,10 @@ const Evaluate = {
           </section>
         </div>
         <section class="panel scorecard" aria-label="Scorecard">
-          ${["Behavioral consistency", "Product feedback"].map((g) => `<div class="sc-group">${g}</div>${COMMON.filter((c) => c.group === g).map((c) => this.critRow(c, rev, it, u, locked)).join("")}${g === "Product feedback" ? this.factualRow(rev, locked) : ""}`).join("")}
+          <div class="rubric-intro small muted">Rate each criterion separately. The examples are illustrations, not evidence about this answer. Human likeness and contextual responsiveness apply to both conditions and are reported separately from the five core criteria.</div>
+          ${locked && !rev.rubricVersion ? `<div class="rubric-intro note small">These ratings were recorded with earlier guidance and remain unchanged. Human likeness and contextual responsiveness are unscored unless a reviewer explicitly adds ratings.</div>` : ""}
+          ${["Behavioral consistency", "Product feedback", "Additional measures"].map((g) => `<div class="sc-group">${g}</div>${COMMON.filter((c) => c.group === g).map((c) => this.critRow(c, rev, it, u, criterionLocked(rev, c.id))).join("")}${g === "Product feedback" ? this.factualRow(rev, locked) : ""}`).join("")}
+          ${locked && !addedMeasuresLocked(rev) ? `<div class="footer-bar"><span class="small muted">Add these two ratings without reopening the original scores.</span><button class="btn primary" data-action="submit-additional" ${ADDED_MEASURES.every((c) => scoreVal(rev, c.id) !== undefined) ? "" : "disabled"}>Submit additional measures</button></div>` : ""}
           ${locked ? `<div class="footer-bar"><span class="small muted">${ICON.lock} Common scores submitted ${fmtTime(rev.commonSubmittedAt)}. The original scores are kept for audit.</span><button class="btn ghost sm" data-action="unlock-common">Revise</button></div>`
             : `<div class="footer-bar"><span class="saved-tick" id="savedTick">${rev.updatedAt ? "Autosaved " + fmtTime(rev.updatedAt) : ""}</span>
                <button class="btn primary" data-action="submit-common" ${COMMON.every((c) => scoreVal(rev, c.id) !== undefined) ? "" : "disabled"}>Submit common scores</button></div>`}
@@ -258,9 +329,10 @@ const Evaluate = {
         ${badge(v)}
       </button>
       ${open ? `<div class="crit-body">
-        ${c.reminder ? `<div class="reminder">${c.reminder} A reply can score high here without scoring high on the other two.</div>` : ""}
+        ${c.guidance ? `<div class="reminder">${esc(c.guidance)}</div>` : ""}
+        ${c.exampleContext ? `<p class="tiny faint">${esc(c.exampleContext)}</p>` : ""}
         ${autoNa && v === undefined ? `<div class="note small">This is the first question, so there is nothing earlier to be consistent with. Mark it not applicable unless you disagree.</div>` : ""}
-        <div class="anchors" role="radiogroup" aria-label="${c.name} score">${c.anchors.map((a, k) => `<button class="anchor" role="radio" aria-checked="${v === k}" aria-pressed="${v === k}" data-action="score" data-c="${c.id}" data-v="${k}" ${locked ? "disabled" : ""}><b>${k}</b><span>${esc(a)}</span></button>`).join("")}</div>
+        <div class="anchors" role="radiogroup" aria-label="${c.name} score">${c.anchors.map((a, k) => `<button class="anchor" role="radio" aria-checked="${v === k}" aria-pressed="${v === k}" data-action="score" data-c="${c.id}" data-v="${k}" ${locked ? "disabled" : ""}><b>${k}</b><span class="anchor-copy">${esc(a)}${c.examples && c.examples[k] ? `<small class="anchor-example">Example: ${esc(c.examples[k])}</small>` : ""}</span></button>`).join("")}</div>
         <div class="crit-tools">
           <button class="btn sm" data-action="score" data-c="${c.id}" data-v="na" aria-pressed="${v === "na"}" ${locked ? "disabled" : ""}>Not applicable</button>
           ${v !== undefined && !locked ? `<button class="btn ghost sm" data-action="score" data-c="${c.id}" data-v="clear">Clear score</button>` : ""}
@@ -313,11 +385,12 @@ const Evaluate = {
   bind() {
     const save = () => { persist(); App.render(); };
     const touch = (rev) => { rev.updatedAt = new Date().toISOString(); };
-    App.on("open-item", (el) => { const u = evalUi(); u.view = "item"; u.item = el.dataset.id; u.open = COMMON[0].id; u.support = null;
-      const rev = myReview(u.item); if (rev && rev.commonSubmittedAt && !rev.implSubmittedAt) u.open = IMPL[0].id; save(); window.scrollTo(0, 0); });
+    App.on("open-item", (el) => { const u = evalUi(); u.view = "item"; u.item = el.dataset.id; u.support = null;
+      u.open = firstReviewCriterion(myReview(u.item), itemContext(u.item)); save(); window.scrollTo(0, 0); });
     App.on("eval-home", () => { evalUi().view = "home"; save(); });
     App.on("qorder", (el) => { evalUi().order = el.dataset.k; save(); });
     App.on("qview", (el) => { evalUi().qview = el.dataset.k; save(); });
+    App.on("qprogress", (el) => { evalUi().progress = el.dataset.k; save(); });
     App.on("qgroup", (el) => { const u = evalUi(); u.open_groups = u.open_groups || {}; const k = el.dataset.k; u.open_groups[k] = u.open_groups[k] === false; save(); });
     App.on("scope-all", (el) => {
       const u = evalUi(); const ids = Object.values(allStudies()).filter((s) => s.product === el.dataset.p && s.baselineRuns.length).map((s) => s.id);
@@ -327,21 +400,23 @@ const Evaluate = {
     App.on("qfilter", (el) => { evalUi().filter = el.dataset.f; save(); });
     App.on("lane", (el) => { STORE.reviewer.lane = el.dataset.lane; save(); });
     App.on("scope", (el) => { const u = evalUi(); const id = el.dataset.study; u.scope = u.scope.includes(id) ? u.scope.filter((x) => x !== id) : [...u.scope, id]; save(); });
+    App.on("refresh-team", () => { App.render(); });
     App.on("item-step", (el) => {
       const u = evalUi(); const items = queueItems(); const pos = items.indexOf(u.item);
-      const n = items[pos + Number(el.dataset.d)]; if (n) { u.item = n; u.support = null; const r = myReview(n); u.open = r && r.commonSubmittedAt && !r.implSubmittedAt ? IMPL[0].id : COMMON[0].id; save(); window.scrollTo(0, 0); }
+      const n = items[pos + Number(el.dataset.d)]; if (n) { u.item = n; u.support = null; u.open = firstReviewCriterion(myReview(n), itemContext(n)); save(); window.scrollTo(0, 0); }
     });
     App.on("open-crit", (el) => { const u = evalUi(); u.open = u.open === el.dataset.c ? null : el.dataset.c; save(); });
     App.on("support", (el) => { const u = evalUi(); u.support = u.support === el.dataset.k ? null : el.dataset.k; save(); });
     App.on("score", (el) => {
       if (STORE.reviewer.lane === "human" && !STORE.reviewer.name.trim()) { toast("Add your name in the queue view first"); return; }
       const u = evalUi(); const rev = myReview(u.item, true); const c = el.dataset.c;
+      if (!ALL_CRIT.some((criterion) => criterion.id === c) || criterionLocked(rev, c)) return;
       rev.scores[c] = rev.scores[c] || { evidence: [], note: "" };
       const raw = el.dataset.v;
       if (raw === "clear") delete rev.scores[c].v; else rev.scores[c].v = raw === "na" ? "na" : Number(raw);
       touch(rev);
       // move to the next unscored criterion in the same pass
-      const pass = COMMON.some((x) => x.id === c) ? COMMON : IMPL;
+      const pass = ADDED_MEASURE_IDS.has(c) && rev.commonSubmittedAt ? ADDED_MEASURES : COMMON.some((x) => x.id === c) ? COMMON : IMPL;
       const nxt = pass.find((x) => scoreVal(rev, x.id) === undefined);
       if (raw !== "clear" && nxt) u.open = nxt.id;
       save();
@@ -350,12 +425,25 @@ const Evaluate = {
     App.on("flag-factual", () => { const rev = myReview(evalUi().item, true); const f = rev.flags.factual || {}; f.on = !f.on; rev.flags.factual = f; touch(rev); save(); });
     App.on("submit-common", () => {
       const u = evalUi(); const rev = myReview(u.item, true);
+      if (rev.commonSubmittedAt) return;
+      if (!COMMON.every((c) => scoreVal(rev, c.id) !== undefined)) { toast("Rate all seven criteria, or mark a criterion not applicable, before submitting."); return; }
       rev.commonSubmittedAt = new Date().toISOString();
       rev.commonAudit = rev.commonAudit || Object.fromEntries(COMMON.map((c) => [c.id, scoreVal(rev, c.id)]));
+      rev.additionalAudit = rev.additionalAudit || Object.fromEntries(ADDED_MEASURES.map((c) => [c.id, scoreVal(rev, c.id)]));
+      rev.additionalSubmittedAt = rev.additionalSubmittedAt || rev.commonSubmittedAt;
+      rev.additionalRubricVersion = rev.additionalRubricVersion || HUMAN_RUBRIC_VERSION;
       const it = itemContext(u.item);
       if (it.i === 0) { rev.scores.trajectory = rev.scores.trajectory || { v: "na", evidence: [], note: "" }; }
       u.open = it.run.cfg.arm === "grounded" ? IMPL.find((c) => scoreVal(rev, c.id) === undefined)?.id || null : null;
       save(); toast("Common scores submitted. The cue is now revealed.");
+    });
+    App.on("submit-additional", () => {
+      const rev = myReview(evalUi().item, true);
+      if (!rev.commonSubmittedAt || addedMeasuresLocked(rev) || !ADDED_MEASURES.every((c) => scoreVal(rev, c.id) !== undefined)) return;
+      rev.additionalAudit = Object.fromEntries(ADDED_MEASURES.map((c) => [c.id, scoreVal(rev, c.id)]));
+      rev.additionalSubmittedAt = new Date().toISOString();
+      rev.additionalRubricVersion = HUMAN_RUBRIC_VERSION;
+      touch(rev); save(); toast("Additional measures saved. Original scores are unchanged.");
     });
     App.on("unlock-common", () => {
       const rev = myReview(evalUi().item, true);
@@ -373,7 +461,7 @@ const Evaluate = {
     onDrop("evidence", (text, target) => {
       const u = evalUi(); if (!target || !ALL_CRIT.find((c) => c.id === target)) return;
       const rev = myReview(u.item, true);
-      if ((COMMON_IDX[target] && rev.commonSubmittedAt) || (!COMMON_IDX[target] && rev.implSubmittedAt)) { toast("That pass is submitted. Revise it to add evidence."); return; }
+      if (criterionLocked(rev, target)) { toast("That pass is submitted. Revise it to add evidence."); return; }
       rev.scores[target] = rev.scores[target] || { evidence: [], note: "" };
       rev.scores[target].evidence = rev.scores[target].evidence || [];
       if (!rev.scores[target].evidence.some((e) => e.text === text)) rev.scores[target].evidence.push({ text });
@@ -391,7 +479,7 @@ const Evaluate = {
       if (App.ws !== "evaluate" || evalUi().view !== "item") return;
       if (e.target.closest("input, textarea, [contenteditable]") || e.metaKey || e.ctrlKey || e.altKey) return;
       const u = evalUi(); const rev = myReview(u.item) || {};
-      const pass = rev.commonSubmittedAt ? (itemContext(u.item).run.cfg.arm === "grounded" ? IMPL : []) : COMMON;
+      const pass = !rev.commonSubmittedAt ? COMMON : !addedMeasuresLocked(rev) ? ADDED_MEASURES : itemContext(u.item).run.cfg.arm === "grounded" ? IMPL : [];
       if (!pass.length) return;
       const idx = Math.max(0, pass.findIndex((c) => c.id === u.open));
       if (/^[0-3]$/.test(e.key) || e.key.toLowerCase() === "n") {
