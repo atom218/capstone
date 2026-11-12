@@ -1201,9 +1201,9 @@ function progBar(run) {
 }
 
 /* ---------------- LLM judge ---------------- */
-function judgePrompt(item, pass, strict) {
+function judgePrompt(item, pass, strict, critOverride) {
   const { run, i, q, turn } = item;
-  const crits = pass === "impl" ? JUDGE_IMPL : JUDGE_COMMON;
+  const crits = critOverride || (pass === "impl" ? JUDGE_IMPL : JUDGE_COMMON);
   const prior = run.turns.slice(0, i).map((t, k) => `Q${k + 1}: ${questionsOf(run.cfg.product)[k].question}\nA${k + 1}: ${t.reply}`).join("\n\n");
   const lines = crits.map((c) => `- ${c.id} (${c.name}): ${c.ask}\n  0 = ${c.anchors[0]}\n  1 = ${c.anchors[1]}\n  2 = ${c.anchors[2]}\n  3 = ${c.anchors[3]}`).join("\n");
   let ctx = `Approved persona profile:\n${runPersonaText(run)}\n\nEarlier replies in this interview:\n${prior || "(none, this is the first question)"}\n\nQuestion ${i + 1}${isScreen(q) ? " (shown with a product screen)" : " (topic-only, no screen)"}:\n${q.question}\n\nReply to score:\n${turn.reply}`;
@@ -1248,6 +1248,7 @@ async function judgeItem(id, judgeCfg) {
     });
     if (out && out.factual_concern) rev.flags.factual = { on: true, note: out.factual_concern };
   };
+  const missingCrits = (crits) => crits.filter((c) => scoreVal(rev, c.id) === undefined);
   const runPass = async (pass, crits, maxTokens) => {
     for (let attempt = 0; attempt < 2; attempt++) {
       crits.forEach((c) => { delete rev.scores[c.id]; });
@@ -1263,7 +1264,30 @@ async function judgeItem(id, judgeCfg) {
       apply(parseJsonLoose(r.text), crits);
       if (crits.every((c) => scoreVal(rev, c.id) !== undefined)) return;
     }
-    throw new Error(`Judge did not return complete ${pass} scores.`);
+    // Final targeted retry for only the criteria that are still missing.
+    const missing = missingCrits(crits);
+    if (missing.length) {
+      const r = await chat(judgePrompt(item, pass, true, missing), {
+        temperature: 0,
+        maxTokens: Math.min(maxTokens, 260 + missing.length * 140),
+        json: judgeCfg.provider !== "azure-anthropic",
+        deployment: judgeCfg.deployment,
+        model: judgeCfg.model,
+        apiVersion: judgeCfg.apiVersion,
+        provider: judgeCfg.provider,
+      });
+      apply(parseJsonLoose(r.text), missing);
+    }
+    const still = missingCrits(crits);
+    if (still.length) {
+      still.forEach((c) => {
+        rev.scores[c.id] = {
+          v: "na",
+          evidence: [],
+          note: "Fallback: model did not return this score.",
+        };
+      });
+    }
   };
 
   await runPass("common", JUDGE_COMMON, 900);
