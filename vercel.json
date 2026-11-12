@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "journey-selection-and-design": false
+      "journey-selection-and-design": true
     }
   }
 }
