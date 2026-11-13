@@ -323,7 +323,9 @@ const Evaluate = {
     const cycleName = cyc ? cyc.short_title.replace(/^Cycle \d: /, "") : "";
     const teamRows = humanReviewsForItem(u.item);
     const llmNow = llmReviewForItem(u.item);
+    const jevNow = (STORE.reviews.jev && STORE.reviews.jev[u.item]) || null;
     const compareCrit = [...JUDGE_COMMON, ...(run.cfg.arm === "grounded" ? JUDGE_IMPL : [])];
+    const jevScored = compareCrit.filter((c) => scoreVal(jevNow, c.id) !== undefined).length;
     const me = (STORE.reviewer.name || "").trim();
     return `<div class="spread" style="margin-bottom:16px">
         <div class="row"><button class="btn ghost" data-action="eval-home">← Queue</button><h2>${anonCode(u.item)}</h2><span class="chip">Interview ${interviewNumber(u.item, blindInterviews(queueSet()))}, Q${it.i + 1}</span><span class="chip">${stageLabel(stage)}</span></div>
@@ -345,17 +347,22 @@ const Evaluate = {
             <p class="tiny faint" style="margin-top:8px">What changes each question: the question text (and screen when present) plus the live state cue. The approved profile and product pack stay the same for this interview.</p>
           </section>
           <section class="panel panel-pad">
-            <div class="spread"><h3>Human vs LLM on this response</h3><span class="small faint">${compareCrit.length} criteria</span></div>
-            <div class="row wrap" style="margin-top:8px;align-items:stretch">
-              <div class="note focus small grow" style="min-width:280px">
-                <div class="spread"><b>Human (team average)</b><span class="faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
+            <div class="spread"><h3>Human, LLM and Jev on this response</h3><span class="small faint">${compareCrit.length} criteria</span></div>
+            <div class="eval-comparison-grid">
+              <div class="note focus small">
+                <div class="eval-comparison-header"><b>Human (team average)</b><span class="faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
                 <div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(humanMeanScore(teamRows, c.id)))}</b></div>`).join("")}</div>
               </div>
-              <div class="note small grow" style="min-width:280px">
-                <div class="spread"><b>LLM (${esc(llmNow.ek.replace(/^llm:/, ""))})</b><span class="faint">${llmNow.review && llmNow.review.implSubmittedAt ? fmtTime(llmNow.review.implSubmittedAt) : "not scored yet"}</span></div>
+              <div class="note small">
+                <div class="eval-comparison-header"><b>LLM (${esc(llmNow.ek.replace(/^llm:/, ""))})</b><span class="faint">${llmNow.review && llmNow.review.implSubmittedAt ? fmtTime(llmNow.review.implSubmittedAt) : "not scored yet"}</span></div>
                 ${llmNow.review ? `<div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(scoreVal(llmNow.review, c.id)))}</b></div>`).join("")}</div>` : `<p class="tiny faint" style="margin-top:6px">Run the LLM judge to populate this side.</p>`}
               </div>
+              <div class="note small">
+                <div class="eval-comparison-header"><b>Jev</b><span class="faint">${jevScored}/${compareCrit.length} criteria recorded</span></div>
+                ${jevScored ? `<div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(scoreVal(jevNow, c.id)))}</b></div>`).join("")}</div>` : `<p class="tiny faint" style="margin-top:6px">No Jev scores for this response.</p>`}
+              </div>
             </div>
+            <p class="tiny faint" style="margin-top:8px">— = no score recorded. N/A = not applicable.</p>
           </section>
           <section class="panel panel-pad">
             <div class="spread"><h3>Team evaluations on this response</h3><span class="small faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
