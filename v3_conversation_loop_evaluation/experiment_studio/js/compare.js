@@ -124,7 +124,7 @@ const Compare = {
       ${!anyScores ? `<section class="panel panel-pad" style="margin-bottom:16px"><div class="spread"><div><h3>No reviews for this pair yet</h3><p class="small muted">Score responses in Evaluate, or run the LLM judge there. To explore this view first, load illustrative scores.</p></div>
         <div class="row"><button class="btn" data-action="go-eval">Open Evaluate</button><button class="btn ghost" data-action="seed-demo">Load illustrative scores</button></div></div></section>` : ""}
       <section class="panel panel-pad" style="margin-bottom:16px">
-        <div class="spread" style="margin-bottom:12px"><div><h2>Common criteria</h2><p class="tiny faint">Each question's score is the median across that evaluator's reviewers and replicates. Criteria stay separate so gains and losses both show.</p></div>
+        <div class="spread" style="margin-bottom:12px"><div><h2>Common criteria</h2><p class="tiny faint">Human scores use the median of submitted ratings only; N/A and missing scores are excluded. Replicates are summarized by their median. Criteria stay separate so gains and losses both show.</p></div>
           <div class="row"><span class="small faint">Evaluator</span><div class="seg" role="group" aria-label="Evaluator">${[...EVALUATORS, { id: "all", name: "All" }].map((e) => `<button data-action="lane-cmp" data-lane="${e.id}" aria-pressed="${u.lane === e.id}">${e.name}</button>`).join("")}</div></div></div>
         <div class="crit-board">
           <div class="grp">Behavioral consistency</div><div class="grp g3">Product feedback</div>
@@ -214,7 +214,7 @@ const Compare = {
       <div class="rc-head"><div class="row"><span class="dot ${isB ? "base" : "grnd"}"></span><b>${isB ? "Baseline" : "Grounded"}</b>${run.cfg.arm === "grounded" ? `<span class="small faint">${esc(moodOf(t.state_before))} cue</span>` : ""}</div><span class="row"><span class="tiny faint">${anonCode(id)} · ${t.words || wordsOf(t.reply)} words</span><button class="btn ghost sm" data-action="open-interview" data-run="${esc(run.id)}" data-i="${i}">Prompt blocks</button></span></div>
       <div class="rc-body"><div class="read reply-text" data-side="${isB ? "base" : "grnd"}">${t.status === "done" ? highlightText(t.reply, quotes) : `<span class="faint">Not generated yet (${t.status}).</span>`}</div></div>
       <div class="rc-scores">
-        ${COMMON.map((c) => { const v = laneScore(id, u.lane, c.id); return `<div class="score-line"><span>${c.name}</span><span class="row"><span class="pips ${isB ? "base" : "grnd"}">${[1, 2, 3].map((k) => `<i class="${v != null && v >= k ? "on" : ""}"></i>`).join("")}</span><b style="width:22px;text-align:right">${v == null ? (revs.some((x) => scoreVal(x.r, c.id) === "na") ? "N/A" : "–") : fmtNum(v)}</b></span></div>`; }).join("")}
+        ${COMMON.map((c) => { const v = laneScore(id, u.lane, c.id); return `<div class="score-line"><span>${c.name}</span><span class="row"><span class="pips ${isB ? "base" : "grnd"}">${[1, 2, 3].map((k) => `<i class="${v != null && v >= k ? "on" : ""}"></i>`).join("")}</span><b style="width:22px;text-align:right">${v == null ? (revs.some((x) => (x.lane === "human" ? submittedHumanValue(x.r, c.id) : scoreVal(x.r, c.id)) === "na") ? "N/A" : "–") : fmtNum(v)}</b></span></div>${u.lane === "human" ? humanRatingDetails(id, c.id) : ""}`; }).join("")}
         ${notes.length ? `<details><summary class="tiny" style="cursor:pointer">${notes.length} reviewer note${notes.length > 1 ? "s" : ""}</summary>${notes.map((n) => `<div class="tiny" style="margin-top:4px"><b>${esc(n.who)}</b> on ${COMMON.find((c) => c.id === n.c).name}: ${esc(n.n)}</div>`).join("")}</details>` : ""}
       </div>
     </div>`;
@@ -235,21 +235,18 @@ const Compare = {
       reviewsFor(id).forEach((x) => rows.push({ arm, ek: x.ek, lane: x.lane, r: x.r }));
     }));
     if (!rows.length) return `<div style="margin-top:20px"><h3>Evaluator comparison</h3><p class="small faint" style="margin-top:6px">No judgments recorded for this question yet.</p></div>`;
-    const lanesPresent = new Set(rows.map((r) => r.lane));
+    const lanesPresent = new Set(rows.filter((r) => r.lane !== "human" || (r.r.commonSubmittedAt && !r.r.demo)).map((r) => r.lane));
     const missing = EVALUATORS.filter((e) => !lanesPresent.has(e.id)).map((e) => e.name);
-    // scale difference across the whole study: LLM and Jev mean minus human mean
-    const laneMean = (lane) => mean(studyItems(s).flatMap((id) => reviewsFor(id).filter((x) => x.lane === lane).flatMap((x) => CORE_COMMON.map((c) => (x.r.commonAudit ? x.r.commonAudit[c.id] : scoreVal(x.r, c.id))))));
-    const hm = laneMean("human");
-    const scale = ["llm", "jev"].map((l) => { const m = laneMean(l); return m != null && hm != null ? `${EVALUATORS.find((e) => e.id === l).name} averages ${m - hm >= 0 ? "+" : ""}${(m - hm).toFixed(2)} against humans` : null; }).filter(Boolean);
     const table = (arm) => {
       const rs = rows.filter((r) => r.arm === arm);
-      const spread = Object.fromEntries(COMMON.map((c) => { const v = rs.map((r) => scoreVal(r.r, c.id)).filter((x) => typeof x === "number"); return [c.id, v.length > 1 ? Math.max(...v) - Math.min(...v) : 0]; }));
+      const spread = Object.fromEntries(COMMON.map((c) => { const v = rs.map((r) => r.lane === "human" ? submittedHumanValue(r.r, c.id) : scoreVal(r.r, c.id)).filter((x) => typeof x === "number"); return [c.id, v.length > 1 ? Math.max(...v) - Math.min(...v) : 0]; }));
       return `<table class="ev-table"><thead><tr><th>${arm === "b" ? '<span class="dot base"></span> Baseline' : '<span class="dot grnd"></span> Grounded'}</th>${COMMON.map((c) => `<th>${c.name}</th>`).join("")}</tr></thead>
-        <tbody>${rs.map((r) => `<tr><td>${esc(r.ek.replace(/^human:/, "").replace(/^llm:/, "LLM · "))}${r.r.demo ? ' <span class="tiny faint">(illustrative)</span>' : ""}</td>${COMMON.map((c) => { const v = scoreVal(r.r, c.id); return `<td class="${spread[c.id] >= 2 ? "flag" : ""}" title="${esc(((r.r.scores[c.id] || {}).note) || "")}">${v === undefined ? "–" : v === "na" ? "N/A" : v}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="${COMMON.length + 1}" class="faint">No judgments</td></tr>`}
+        <tbody>${rs.map((r) => `<tr><td>${esc(r.ek.replace(/^human:/, "").replace(/^llm:/, "LLM · "))}${r.r.demo ? ' <span class="tiny faint">(illustrative; excluded from human median)</span>' : r.lane === "human" && !r.r.commonSubmittedAt ? ' <span class="tiny faint">(draft; excluded)</span>' : ""}</td>${COMMON.map((c) => { const v = r.lane === "human" && r.r.commonSubmittedAt ? submittedHumanValue(r.r, c.id) : scoreVal(r.r, c.id); return `<td class="${spread[c.id] >= 2 ? "flag" : ""}" title="${esc(((r.r.scores[c.id] || {}).note) || "")}">${v === undefined ? "–" : v === "na" ? "N/A" : v}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="${COMMON.length + 1}" class="faint">No judgments</td></tr>`}
+        ${armRuns(s, arm).map((run) => { const id = itemId(run.id, i); return `<tr class="human-median-row"><td>Human median (submitted)${armRuns(s, arm).length > 1 ? ` · ${esc(anonCode(id))}` : ""}</td>${COMMON.map((c) => { const hs = humanScoreSummary(id, c.id); return `<td><b>${hs.value === "na" ? "N/A" : hs.value === undefined ? "—" : fmtNum(hs.value)}</b><div class="tiny faint">${hs.numeric.length} reviewer${hs.numeric.length === 1 ? "" : "s"}${hs.na ? ` · ${hs.na} N/A` : ""}</div></td>`; }).join("")}</tr>`; }).join("")}
         <tr><td class="tiny faint">Disagreement</td>${COMMON.map((c) => `<td class="tiny ${spread[c.id] >= 2 ? "flag" : "faint"}">${spread[c.id] >= 2 ? `${spread[c.id]}-point spread` : spread[c.id] ? "1 point" : "none"}</td>`).join("")}</tr></tbody></table>`;
     };
-    return `<div style="margin-top:22px"><div class="spread"><h3>Evaluator comparison</h3><span class="small faint">${[missing.length ? `Missing: ${missing.join(", ")}` : "All three evaluators present", ...scale].join(" · ")}</span></div>
-      <div class="slot-pair" style="margin-top:8px">${table("b")}${table("g")}</div></div>`;
+    return `<div style="margin-top:22px"><div class="spread"><h3>Evaluator comparison</h3><span class="small faint">${[missing.length ? `Missing: ${missing.join(", ")}` : "All three evaluators present", "Human medians exclude drafts, N/A and missing scores"].join(" · ")}</span></div>
+      <div class="slot-pair human-evaluator-tables" style="margin-top:8px">${table("b")}${table("g")}</div></div>`;
   },
   implSection(u, s) {
     const g = armRuns(s, "g")[0]; if (!g) return "";
@@ -257,7 +254,7 @@ const Compare = {
       <div class="spread" style="margin-bottom:8px"><div><h2>Journey implementation</h2><p class="small muted">Grounded interview only. Scored after the common pass, with the cue revealed.</p></div></div>
       <table class="ev-table"><thead><tr><th>Check</th>${[1, 2, 3, 4, 5, 6, 7].map((i) => `<th>Q${i}</th>`).join("")}</tr></thead><tbody>
         <tr><td class="small faint">Cue supplied</td>${g.turns.map((t) => `<td class="tiny"><span class="chip focus">${esc(moodOf(t.state_before || ""))}</span></td>`).join("")}</tr>
-        ${IMPL.map((c) => `<tr><td>${c.name}</td>${[0, 1, 2, 3, 4, 5, 6].map((i) => { const v = armScore(s, "g", i, c.id, u.lane); const na = v == null && armRuns(s, "g").some((r) => reviewsFor(itemId(r.id, i)).some((x) => scoreVal(x.r, c.id) === "na")); return `<td><b>${v == null ? (na ? "N/A" : "–") : fmtNum(v)}</b></td>`; }).join("")}</tr>`).join("")}
+        ${IMPL.map((c) => `<tr><td>${c.name}</td>${[0, 1, 2, 3, 4, 5, 6].map((i) => { const v = armScore(s, "g", i, c.id, u.lane); const na = v == null && armRuns(s, "g").some((r) => reviewsFor(itemId(r.id, i)).some((x) => (x.lane === "human" ? submittedHumanValue(x.r, c.id) : scoreVal(x.r, c.id)) === "na")); return `<td><b>${v == null ? (na ? "N/A" : "–") : fmtNum(v)}</b></td>`; }).join("")}</tr>`).join("")}
       </tbody></table>
     </section>`;
   },

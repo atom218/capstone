@@ -696,13 +696,44 @@ function reviewStage(r) {
   return Object.keys(r.scores || {}).length ? "started" : "none";
 }
 function scoreVal(r, cid) { const s = r && r.scores && r.scores[cid]; return s ? s.v : undefined; }
+function humanCriterionSubmitted(r, cid) {
+  if (!r || r.demo || !r.commonSubmittedAt) return false;
+  if (ADDED_MEASURE_IDS.has(cid)) return !!r.additionalSubmittedAt || !!(r.commonAudit && Object.prototype.hasOwnProperty.call(r.commonAudit, cid));
+  return COMMON_IDX[cid] ? true : !!r.implSubmittedAt;
+}
+function submittedHumanValue(r, cid) {
+  if (!humanCriterionSubmitted(r, cid)) return undefined;
+  if (ADDED_MEASURE_IDS.has(cid)) {
+    if (r.additionalAudit) return r.additionalAudit[cid];
+    if (r.commonAudit && Object.prototype.hasOwnProperty.call(r.commonAudit, cid)) return r.commonAudit[cid];
+  } else if (COMMON_IDX[cid] && r.commonAudit) return r.commonAudit[cid];
+  return scoreVal(r, cid);
+}
+function humanScoreSummary(id, cid) {
+  const rows = reviewsFor(id).filter((x) => x.lane === "human" && humanCriterionSubmitted(x.r, cid))
+    .map((x) => ({ ...x, value: submittedHumanValue(x.r, cid) }))
+    .sort((a, b) => a.ek.localeCompare(b.ek));
+  const numeric = rows.filter((x) => typeof x.value === "number" && Number.isFinite(x.value));
+  const na = rows.filter((x) => x.value === "na").length;
+  return { rows, numeric, na, missing: rows.length - numeric.length - na,
+    value: numeric.length ? median(numeric.map((x) => x.value)) : na ? "na" : undefined };
+}
+function humanRatingDetails(id, cid) {
+  const s = humanScoreSummary(id, cid);
+  const label = s.numeric.length
+    ? `Median from ${s.numeric.length} reviewer${s.numeric.length === 1 ? "" : "s"} · scores: ${s.numeric.map((x) => x.value).join(", ")}`
+    : "No submitted numeric ratings";
+  const exclusions = `${s.na ? ` · ${s.na} N/A` : ""}${s.missing ? ` · ${s.missing} unscored` : ""}`;
+  if (!s.rows.length) return `<div class="human-rating-details tiny faint">${label}</div>`;
+  return `<details class="human-rating-details tiny"><summary>${esc(label + exclusions)}</summary>${s.rows.map((x) => `<div>${esc(x.ek.slice(6))}: <b>${x.value === "na" ? "N/A" : typeof x.value === "number" ? esc(String(x.value)) : "—"}</b></div>`).join("")}</details>`;
+}
 /* Aggregate score for one evaluator lane on one item: median across reviewers of that lane. */
 function laneScore(itemIdStr, lane, cid) {
   const vals = reviewsFor(itemIdStr).filter((x) => lane === "all" || x.lane === lane)
-    .map((x) => ADDED_MEASURE_IDS.has(cid)
+    .map((x) => x.lane === "human" ? submittedHumanValue(x.r, cid) : ADDED_MEASURE_IDS.has(cid)
       ? (x.r.additionalAudit ? x.r.additionalAudit[cid] : scoreVal(x.r, cid))
       : (cid in COMMON_IDX ? (x.r.commonAudit ? x.r.commonAudit[cid] : scoreVal(x.r, cid)) : scoreVal(x.r, cid)))
-    .filter((v) => typeof v === "number");
+    .filter((v) => typeof v === "number" && Number.isFinite(v));
   return median(vals);
 }
 const COMMON_IDX = Object.fromEntries(COMMON.map((c) => [c.id, true]));

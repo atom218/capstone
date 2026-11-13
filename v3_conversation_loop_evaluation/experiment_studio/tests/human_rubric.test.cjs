@@ -106,3 +106,50 @@ test('comparison and CSV exports include the added measures, leaving missing his
   assert.match(csv.split('\n')[0], /"additional_rubric_version"/);
   assert.match(csv, /Keep the existing factual flag/);
 });
+
+function submittedRating(scores, extra = {}) {
+  return { commonSubmittedAt: '2026-11-13T10:00:00Z', scores: Object.fromEntries(Object.entries(scores).map(([c,v]) => [c,{v}])), commonAudit: scores, ...extra };
+}
+function aggregationSession(records) {
+  return createSession({ reviewer: { name: 'A', lane: 'human' }, reviews: Object.fromEntries(Object.entries(records).map(([name,r]) => ['human:'+name, {'C1_sub_fine_full#2':r}])) });
+}
+test('human medians exclude drafts and illustrative ratings and retain submitted audit values', () => {
+  const one = submittedRating({persona:1}); one.scores.persona.v=3;
+  const s=aggregationSession({ A:one, B:submittedRating({persona:1}), C:submittedRating({persona:3}), Draft:{scores:{persona:{v:0}}}, Demo:submittedRating({persona:0},{demo:true}), NA:submittedRating({persona:'na'}) });
+  const summary=s.json('humanScoreSummary("C1_sub_fine_full#2","persona")');
+  assert.equal(summary.value,1); assert.equal(summary.numeric.length,3); assert.equal(summary.na,1);
+  assert.equal(s.run('laneScore("C1_sub_fine_full#2","human","persona")'),1);
+  const before=s.json('STORE.reviews');
+  const evaluate=s.run('Evaluate.itemView({...evalUi(),item:"C1_sub_fine_full#2"})');
+  assert.match(evaluate,/Human \(submitted median\)/);assert.match(evaluate,/4 submitted reviewers/);assert.match(evaluate,/Median from 3 reviewers · scores: 1, 1, 3/);
+  const compare=s.run('Compare.evalCompare(studyById("study_C1_sub_fine_full"),2)');
+  assert.match(compare,/Human median \(submitted\)/);assert.match(compare,/3 reviewers/);assert.match(compare,/draft; excluded/);
+  const card=s.run('Compare.replyCard(studyById("study_C1_sub_fine_full"),runById("C1_sub_fine_full"),2,"g",{lane:"human"},[])');
+  assert.match(card,/Median from 3 reviewers · scores: 1, 1, 3/);
+  assert.deepEqual(s.json('STORE.reviews'),before);
+});
+test('even human medians remain fractional, zero is numeric, and all N/A is distinct from missing', () => {
+  const s=aggregationSession({ A:submittedRating({persona:1,specificity:0,conversation:'na'}), B:submittedRating({persona:2,specificity:0,conversation:'na'}) });
+  assert.equal(s.run('humanScoreSummary("C1_sub_fine_full#2","persona").value'),1.5);
+  assert.equal(s.run('humanScoreSummary("C1_sub_fine_full#2","specificity").value'),0);
+  assert.equal(s.run('humanScoreSummary("C1_sub_fine_full#2","conversation").value'),'na');
+  assert.equal(s.run('laneScore("C1_sub_fine_full#2","human","conversation")'),null);
+  assert.equal(s.run('humanScoreSummary("C1_sub_fine_full#2","insight").value'),undefined);
+});
+test('additional and journey scores only contribute after their own submission, without changing core ratings', () => {
+  const s=aggregationSession({ A:submittedRating({persona:2},{scores:{persona:{v:2},likeness:{v:3},cue_fit:{v:3}}}) });
+  assert.equal(s.run('humanScoreSummary("C1_sub_fine_full#2","likeness").value'),undefined);
+  assert.equal(s.run('humanScoreSummary("C1_sub_fine_full#2","cue_fit").value'),undefined);
+  s.run('const r=STORE.reviews["human:A"]["C1_sub_fine_full#2"];r.additionalSubmittedAt="2026-11-13";r.additionalAudit={likeness:2};r.implSubmittedAt="2026-11-13";');
+  assert.equal(s.run('humanScoreSummary("C1_sub_fine_full#2","likeness").value'),2);
+  assert.equal(s.run('humanScoreSummary("C1_sub_fine_full#2","cue_fit").value'),3);
+  assert.equal(s.run('humanScoreSummary("C1_sub_fine_full#2","persona").value'),2);
+});
+test('all-evaluator summaries exclude human drafts while preserving automated scores', () => {
+  const s=aggregationSession({ A:{scores:{persona:{v:0}}} });
+  s.run('STORE.reviews["llm:test"]={"C1_sub_fine_full#2":{scores:{persona:{v:2}}}};STORE.reviews.jev={"C1_sub_fine_full#2":{scores:{persona:{v:3}}}};');
+  assert.equal(s.run('laneScore("C1_sub_fine_full#2","human","persona")'),null);
+  assert.equal(s.run('laneScore("C1_sub_fine_full#2","all","persona")'),2.5);
+  assert.equal(s.run('laneScore("C1_sub_fine_full#2","llm","persona")'),2);
+  assert.equal(s.run('laneScore("C1_sub_fine_full#2","jev","persona")'),3);
+});

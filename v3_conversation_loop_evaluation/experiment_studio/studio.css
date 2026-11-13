@@ -299,6 +299,9 @@ body.dragging * { cursor: grabbing !important; }
 .eval-comparison-grid > .note { min-width: 0; overflow-wrap: anywhere; }
 .eval-comparison-grid .stack > .spread { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }
 .eval-comparison-header { display: flex; flex-direction: column; gap: 6px; min-height: 76px; }
+.human-rating-details { margin-top: 4px; line-height: 1.45; color: var(--ink-2); }
+.human-rating-details summary { cursor: pointer; }
+.human-rating-details > div { margin-top: 3px; }
 .answer-card { padding: 22px 26px; }
 .answer-text { white-space: pre-wrap; }
 .answer-text mark { background: #fbe9b0; color: inherit; border-radius: 2px; padding: 0 1px; box-shadow: 0 1px 0 #d9a514; }
@@ -734,3 +737,12 @@ table.scope-table td { padding: 4px; text-align: center; border-top: 1px solid #
 .qs-d { font-size: 11.5px; font-weight: 600; }
 .qs-d.up { color: #1d7f62; } .qs-d.down { color: #b8364a; }
 .qs-btn[aria-pressed="true"] .qs-d.up { color: #7fe0bf; } .qs-btn[aria-pressed="true"] .qs-d.down { color: #f5a3ae; }
+
+.human-ratings-breakdown { margin-top: 12px; font-size: 12px; }
+.human-ratings-breakdown > summary { cursor: pointer; }
+.human-ratings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; margin-top: 10px; }
+.human-median-row { background: var(--focus-tint); }
+
+.human-evaluator-tables { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.human-evaluator-tables .ev-table { table-layout: fixed; overflow-wrap: anywhere; }
+@media (max-width: 1000px) { .human-evaluator-tables { grid-template-columns: minmax(0, 1fr); } }

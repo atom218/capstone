@@ -84,14 +84,6 @@ function scoreText(v) {
   if (!Number.isFinite(n)) return String(v);
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
-function humanMeanScore(rows, cid) {
-  const vals = rows.map((x) => scoreVal(x.r, cid)).filter((v) => typeof v === "number" && Number.isFinite(v));
-  if (!vals.length) {
-    return rows.some((x) => scoreVal(x.r, cid) === "na") ? "na" : undefined;
-  }
-  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-  return Number.isInteger(mean) ? mean : Number(mean.toFixed(1));
-}
 function teammateHover(itemIdStr) {
   const hs = humanReviewsForItem(itemIdStr);
   if (!hs.length) return "No teammate reviews yet";
@@ -322,6 +314,7 @@ const Evaluate = {
     const cyc = run.cfg.arm === "grounded" ? DATA.cycles[run.cfg.journey] : null;
     const cycleName = cyc ? cyc.short_title.replace(/^Cycle \d: /, "") : "";
     const teamRows = humanReviewsForItem(u.item);
+    const submittedTeamRows = teamRows.filter((x) => x.r.commonSubmittedAt && !x.r.demo);
     const llmNow = llmReviewForItem(u.item);
     const jevNow = (STORE.reviews.jev && STORE.reviews.jev[u.item]) || null;
     const compareCrit = [...JUDGE_COMMON, ...(run.cfg.arm === "grounded" ? JUDGE_IMPL : [])];
@@ -350,8 +343,8 @@ const Evaluate = {
             <div class="spread"><h3>Human, LLM and Jev on this response</h3><span class="small faint">${compareCrit.length} criteria</span></div>
             <div class="eval-comparison-grid">
               <div class="note focus small">
-                <div class="eval-comparison-header"><b>Human (team average)</b><span class="faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
-                <div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(humanMeanScore(teamRows, c.id)))}</b></div>`).join("")}</div>
+                <div class="eval-comparison-header"><b>Human (submitted median)</b><span class="faint">${submittedTeamRows.length} submitted reviewer${submittedTeamRows.length === 1 ? "" : "s"}</span></div>
+                <div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(humanScoreSummary(u.item, c.id).value))}</b></div>`).join("")}</div>
               </div>
               <div class="note small">
                 <div class="eval-comparison-header"><b>LLM (${esc(llmNow.ek.replace(/^llm:/, ""))})</b><span class="faint">${llmNow.review && llmNow.review.implSubmittedAt ? fmtTime(llmNow.review.implSubmittedAt) : "not scored yet"}</span></div>
@@ -362,6 +355,10 @@ const Evaluate = {
                 ${jevScored ? `<div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(scoreVal(jevNow, c.id)))}</b></div>`).join("")}</div>` : `<p class="tiny faint" style="margin-top:6px">No Jev scores for this response.</p>`}
               </div>
             </div>
+            <details class="human-ratings-breakdown">
+              <summary>Individual human scores and reviewer counts</summary>
+              <div class="human-ratings-grid">${compareCrit.map((c) => `<div><b class="tiny">${esc(c.name)}</b>${humanRatingDetails(u.item, c.id)}</div>`).join("")}</div>
+            </details>
             <p class="tiny faint" style="margin-top:8px">— = no score recorded. N/A = not applicable.</p>
           </section>
           <section class="panel panel-pad">
