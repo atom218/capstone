@@ -1,3 +1,5 @@
+const { BACKEND_AZURE_KEY } = require("./_shared");
+
 function parseBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
   if (typeof req.body === "string" && req.body.trim()) {
@@ -36,7 +38,7 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const key = req.headers["api-key"] || process.env.AZURE_OPENAI_API_KEY || "";
+  const key = req.headers["api-key"] || BACKEND_AZURE_KEY || "";
   const extraHeaders = {};
   if (body.headers && typeof body.headers === "object" && typeof body.headers["anthropic-version"] === "string") {
     extraHeaders["anthropic-version"] = body.headers["anthropic-version"];

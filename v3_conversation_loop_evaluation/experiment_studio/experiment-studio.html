@@ -1192,6 +1192,7 @@ const CloudSync = {
           return;
         }
         const doc = snap.data() || {};
+        if (!cloudCfg().passcode && doc.passcode) cloudCfg().passcode = doc.passcode;
         if (cloudCfg().passcode && doc.passcode && doc.passcode !== cloudCfg().passcode) {
           this.setStatus("error", "Passcode mismatch for this workspace");
           return;
@@ -1225,12 +1226,19 @@ const CloudSync = {
         const doc = snap.exists ? (snap.data() || {}) : {};
         const remote = doc.payload || {};
         const merged = mergeSyncData(remote, local);
+        const payload = {
+          reviews: merged.reviews || {},
+          observations: merged.observations || [],
+          liveRuns: merged.liveRuns || {},
+          liveStudies: merged.liveStudies || {},
+        };
+        const passcode = cloudCfg().passcode || doc.passcode || "";
         const out = {
           schemaVersion: CLOUD_SCHEMA_VERSION,
-          passcode: cloudCfg().passcode || "",
+          passcode,
           updatedBy: reviewerLabel(),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          payload: merged,
+          payload,
         };
         if (migrationId) out.migrationIds = firebase.firestore.FieldValue.arrayUnion(migrationId);
         tx.set(this.docRef, out, { merge: true });
