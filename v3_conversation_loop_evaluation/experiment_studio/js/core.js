@@ -167,10 +167,27 @@ const IMPL = [
     examples: ["Becomes more cheerful and relaxed instead.", "Stays mildly doubtful with no discernible shift.", "Becomes a little more frustrated, but less than the supplied shift calls for.", "Clearly becomes more frustrated while still addressing the product question."] },
 ];
 const ALL_CRIT = [...COMMON, ...IMPL];
+/* Judges that follow LLM-judge-rubric-and-instructions.docx (js/judge_rubric.js).
+   Each has its own review lane and its own Firestore document, so the earlier
+   Claude lane (llm:claude-opus-5-5-fast) is never overwritten and the main
+   workspace document stays under Firestore's 1 MiB limit. */
+const JUDGE_RUBRIC_VERSION = "llm-judge-rubric-2026-11-19";
+const JUDGE_ENDPOINT = "https://clc3650-2032-resource.services.ai.azure.com";
+const RUBRIC_JUDGES = [
+  { id: "claude2", key: "llm:claude-opus-5-5-fast:rubric2", name: "Claude (new rubric)", short: "Claude new", provider: "anthropic", model: "claude-opus-5-5-fast", shard: "judge-claude-rubric2" },
+  { id: "gpt2", key: "llm:gpt-6.1-sol:rubric2", name: "GPT-6.1 (new rubric)", short: "GPT new", provider: "openai-responses", model: "gpt-6.1-sol", shard: "judge-gpt-rubric2" },
+];
+const SHARD_LANES = Object.fromEntries(RUBRIC_JUDGES.map((j) => [j.key, j.shard]));
+/* A judge's lane is split over SHARD_PARTS documents (about 6 KB per answer), keeping each well under 1 MiB. */
+const SHARD_PARTS = 2;
+function shardPartOf(itemIdStr) { return parseInt(hash(`part:${itemIdStr}`), 36) % SHARD_PARTS; }
+function shardDocId(workspaceId, judge, part) { return `${workspaceId}--${judge.shard}-p${part}`; }
+const PREVIOUS_JUDGE_KEY = "llm:claude-opus-5-5-fast";
 const EVALUATORS = [
-  { id: "human", name: "Human", desc: "Team reviewers" },
-  { id: "llm", name: "LLM", desc: "Automated judge" },
-  { id: "jev", name: "Jev", desc: "Jev's reviews" },
+  { id: "human", name: "Human", short: "Human", desc: "Team reviewers" },
+  { id: "llm", name: "Claude (previous)", short: "Claude prev", desc: "Earlier automated judge, previous rubric" },
+  ...RUBRIC_JUDGES.map((j) => ({ id: j.id, name: j.name, short: j.short, desc: "Automated judge, rubric document" })),
+  { id: "jev", name: "Jev", short: "Jev", desc: "Jev's reviews" },
 ];
 
 /* ---------------- helpers ---------------- */
@@ -307,6 +324,12 @@ function cloudPayloadSlice() {
   };
 }
 function cloneObj(x) { return safeJson(JSON.stringify(x), {}); }
+function stableJson(x) {
+  if (Array.isArray(x)) return `[${x.map(stableJson).join(",")}]`;
+  if (x && typeof x === "object") return `{${Object.keys(x).sort().map((k) => `${JSON.stringify(k)}:${stableJson(x[k])}`).join(",")}}`;
+  return JSON.stringify(x === undefined ? null : x);
+}
+function withoutShardLanes(reviews) { return Object.fromEntries(Object.entries(reviews || {}).filter(([ek]) => !SHARD_LANES[ek])); }
 function reviewStamp(r) {
   if (!r || typeof r !== "object") return "";
   return r.updatedAt || r.implSubmittedAt || r.commonSubmittedAt || r.startedAt || "";
@@ -402,9 +425,14 @@ const CloudSync = {
     this.state.lastSyncAt = new Date().toISOString();
     if (typeof App !== "undefined" && App.renderSoon) App.renderSoon();
   },
+  shardUnsubs: [],
+  shardSeen: {},
   reset() {
     if (this.unsub) this.unsub();
     this.unsub = null;
+    this.shardUnsubs.forEach((u) => u && u());
+    this.shardUnsubs = [];
+    this.shardSeen = {};
     this.docRef = null;
     this.db = null;
     this.app = null;
@@ -447,8 +475,45 @@ const CloudSync = {
       }, (err) => {
         this.setStatus("error", String((err && err.message) || err || "Failed to subscribe"));
       });
+      this.shardUnsubs = RUBRIC_JUDGES.flatMap((j) => Array.from({ length: SHARD_PARTS }, (_, p) => this.shardRef(j, p).onSnapshot((snap) => {
+        if (!snap.exists) return;
+        const remote = (((snap.data() || {}).payload || {}).reviews || {})[j.key] || {};
+        this.shardSeen[`${j.key}#${p}`] = stableJson(remote);
+        const merged = mergeReviews({ [j.key]: STORE.reviews[j.key] || {} }, { [j.key]: remote })[j.key];
+        if (stableJson(merged) === stableJson(STORE.reviews[j.key] || {})) return;
+        STORE.reviews[j.key] = merged;
+        suppressCloud(() => persistWithoutCloud(true));
+        if (typeof App !== "undefined" && App.renderSoon) App.renderSoon();
+      }, (err) => { this.state.shardError = `${j.name}: ${(err && err.message) || err}`; })));
     } catch (err) {
       this.setStatus("error", String((err && err.message) || err));
+    }
+  },
+  shardRef(judge, part) { return this.db.collection("studioWorkspaces").doc(shardDocId(cloudCfg().workspaceId, judge, part)); },
+  /* Rubric judge lanes live in their own documents; write a part only when it differs from what the cloud last sent. */
+  async pushShards() {
+    for (const j of RUBRIC_JUDGES) {
+      for (let p = 0; p < SHARD_PARTS; p++) {
+        const local = Object.fromEntries(Object.entries(STORE.reviews[j.key] || {}).filter(([id]) => shardPartOf(id) === p));
+        const seenKey = `${j.key}#${p}`;
+        if (!Object.keys(local).length || stableJson(local) === this.shardSeen[seenKey]) continue;
+        const ref = this.shardRef(j, p);
+        let written = null;
+        await this.db.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          const doc = snap.exists ? (snap.data() || {}) : {};
+          const remote = ((doc.payload || {}).reviews || {})[j.key] || {};
+          written = mergeReviews({ [j.key]: remote }, { [j.key]: local })[j.key];
+          tx.set(ref, {
+            schemaVersion: CLOUD_SCHEMA_VERSION,
+            passcode: cloudCfg().passcode || doc.passcode || "",
+            updatedBy: reviewerLabel(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            payload: { reviews: { [j.key]: written }, observations: [], liveRuns: {}, liveStudies: {} },
+          }, { merge: true });
+        });
+        this.shardSeen[seenKey] = stableJson(written);
+      }
     }
   },
   queuePush() {
@@ -469,7 +534,7 @@ const CloudSync = {
         const remote = doc.payload || {};
         const merged = mergeSyncData(remote, local);
         const payload = {
-          reviews: merged.reviews || {},
+          reviews: withoutShardLanes(merged.reviews || {}),
           observations: merged.observations || [],
           liveRuns: merged.liveRuns || {},
           liveStudies: merged.liveStudies || {},
@@ -485,6 +550,8 @@ const CloudSync = {
         if (migrationId) out.migrationIds = firebase.firestore.FieldValue.arrayUnion(migrationId);
         tx.set(this.docRef, out, { merge: true });
       });
+      try { await this.pushShards(); this.state.shardError = ""; }
+      catch (err) { this.state.shardError = String((err && err.message) || err); }
       this.state.writes += 1;
       this.state.lastSyncAt = new Date().toISOString();
       if (this.state.status !== "online") this.setStatus("online", "Synced with team workspace");
@@ -677,7 +744,14 @@ function anonCode(id) { return "R-" + shortId("anon:" + id); }
 
 /* ---------------- reviews ---------------- */
 function evalKey(lane, name) { return lane === "human" ? `human:${(name || "Reviewer").trim()}` : lane === "jev" ? "jev" : `llm:${name || "judge"}`; }
-function laneOf(key) { return key.split(":")[0]; }
+function laneOf(key) { const j = RUBRIC_JUDGES.find((x) => x.key === key); return j ? j.id : key.split(":")[0]; }
+function laneLabel(key) {
+  const j = RUBRIC_JUDGES.find((x) => x.key === key);
+  if (j) return j.name;
+  if (key === "jev") return "Jev";
+  if (key.startsWith("human:")) return key.slice(6);
+  return "Claude (previous) · " + key.replace(/^llm:/, "");
+}
 function reviewsFor(itemIdStr) {
   const out = [];
   Object.entries(STORE.reviews).forEach(([ek, items]) => { if (items[itemIdStr]) out.push({ ek, lane: laneOf(ek), r: items[itemIdStr] }); });
@@ -1371,12 +1445,13 @@ function exportAll() {
   download(`experiment-studio-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(out, null, 2));
 }
 function exportScoresCsv() {
-  const rows = [["evaluator", "item", "anon_code", "run_id", "arm", "journey", "question", ...ALL_CRIT.map((c) => c.id), ...COMMON.map((c) => "common_audit_" + c.id), "factual_concern", "illustrative", "common_submitted_at", "impl_submitted_at", "rubric_version", "additional_submitted_at", "additional_rubric_version"]];
+  const rows = [["evaluator", "item", "anon_code", "run_id", "arm", "journey", "question", ...ALL_CRIT.map((c) => c.id), ...COMMON.map((c) => "common_audit_" + c.id), "factual_concern", "illustrative", "common_submitted_at", "impl_submitted_at", "rubric_version", "additional_submitted_at", "additional_rubric_version", "judge_statuses"]];
   Object.entries(STORE.reviews).forEach(([ek, items]) => Object.entries(items).forEach(([id, r]) => {
     const it = itemContext(id); if (!it) return;
-    rows.push([ek, id, anonCode(id), it.run.id, it.run.cfg.arm, it.run.cfg.journey || "", it.i + 1,
+    const statuses = ALL_CRIT.filter((c) => r.scores && r.scores[c.id] && r.scores[c.id].status && r.scores[c.id].status !== "scored").map((c) => `${c.id}:${r.scores[c.id].status}`).join("; ");
+    rows.push([SHARD_LANES[ek] ? `${ek} (${laneLabel(ek)})` : ek, id, anonCode(id), it.run.id, it.run.cfg.arm, it.run.cfg.journey || "", it.i + 1,
       ...ALL_CRIT.map((c) => (scoreVal(r, c.id) ?? "")), ...COMMON.map((c) => (r.commonAudit ? r.commonAudit[c.id] ?? "" : "")),
-      r.flags && r.flags.factual && r.flags.factual.on ? (r.flags.factual.note || "yes") : "", r.demo ? "yes" : "", r.commonSubmittedAt || "", r.implSubmittedAt || "", r.rubricVersion || "", r.additionalSubmittedAt || "", r.additionalRubricVersion || ""]);
+      r.flags && r.flags.factual && r.flags.factual.on ? (r.flags.factual.note || "yes") : "", r.demo ? "yes" : "", r.commonSubmittedAt || "", r.implSubmittedAt || "", r.rubricVersion || "", r.additionalSubmittedAt || "", r.additionalRubricVersion || "", statuses]);
   }));
   download("experiment-studio-scores.csv", rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n"), "text/csv");
 }
@@ -1389,8 +1464,11 @@ const isStr = (v, max = 20000) => typeof v === "string" && v.length <= max;
 function cleanScore(sc) {
   if (!sc || typeof sc !== "object") return null;
   const v = sc.v === "na" ? "na" : [0, 1, 2, 3].includes(sc.v) ? sc.v : undefined;
-  const out = { evidence: Array.isArray(sc.evidence) ? sc.evidence.filter((e) => e && isStr(e.text, 2000)).slice(0, 20).map((e) => ({ text: e.text })) : [], note: isStr(sc.note, 4000) ? sc.note : "" };
+  const out = { evidence: Array.isArray(sc.evidence) ? sc.evidence.filter((e) => e && isStr(e.text, 2000)).slice(0, 20).map((e) => (isStr(e.source, 40) ? { text: e.text, source: e.source } : { text: e.text })) : [], note: isStr(sc.note, 4000) ? sc.note : "" };
   if (v !== undefined) out.v = v;
+  if (["scored", "not_applicable", "insufficient_evidence"].includes(sc.status)) out.status = sc.status;
+  if ("implication" in sc && (sc.implication === null || isStr(sc.implication, 2000))) out.implication = sc.implication;
+  if (["question_relevance", "situation_fit", "both"].includes(sc.issueType)) out.issueType = sc.issueType;
   return out;
 }
 function cleanReview(r) {
@@ -1402,6 +1480,10 @@ function cleanReview(r) {
   ["startedAt", "updatedAt", "commonSubmittedAt", "implSubmittedAt", "additionalSubmittedAt"].forEach((k) => { if (isStr(r[k], 40)) out[k] = r[k]; });
   if (r.commonAudit && typeof r.commonAudit === "object") out.commonAudit = Object.fromEntries(COMMON.filter((c) => Object.prototype.hasOwnProperty.call(r.commonAudit, c.id)).map((c) => [c.id, r.commonAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.commonAudit[c.id]) ? r.commonAudit[c.id] : undefined]));
   if (isStr(r.rubricVersion, 80)) out.rubricVersion = r.rubricVersion;
+  if (isStr(r.rubricSha, 40)) out.rubricSha = r.rubricSha;
+  if (r.judge && isStr(r.judge.model, 80) && isStr(r.judge.provider, 40)) out.judge = { model: r.judge.model, provider: r.judge.provider };
+  if (r.packets && typeof r.packets === "object") out.packets = Object.fromEntries(["common", "journey"].filter((k) => isStr(r.packets[k], 40)).map((k) => [k, r.packets[k]]));
+  if (Array.isArray(r.factualFlags)) out.factualFlags = r.factualFlags.filter((f) => f && isStr(f.claim, 4000)).slice(0, 20).map((f) => ({ claim: f.claim, concern: isStr(f.concern, 4000) ? f.concern : "" }));
   if (isStr(r.additionalRubricVersion, 80)) out.additionalRubricVersion = r.additionalRubricVersion;
   if (r.additionalAudit && typeof r.additionalAudit === "object") out.additionalAudit = Object.fromEntries(ADDED_MEASURES.filter((c) => Object.prototype.hasOwnProperty.call(r.additionalAudit, c.id)).map((c) => [c.id, r.additionalAudit[c.id] === "na" || [0, 1, 2, 3].includes(r.additionalAudit[c.id]) ? r.additionalAudit[c.id] : undefined]));
   if (Array.isArray(r.auditTrail)) out.auditTrail = r.auditTrail.filter((a) => a && isStr(a.at, 40) && a.scores && typeof a.scores === "object").map((a) => ({ at: a.at, scores: Object.fromEntries(ALL_CRIT.filter((c) => Object.prototype.hasOwnProperty.call(a.scores, c.id) && (a.scores[c.id] === "na" || [0, 1, 2, 3].includes(a.scores[c.id]))).map((c) => [c.id, a.scores[c.id]])) }));

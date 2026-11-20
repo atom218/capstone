@@ -18,7 +18,7 @@ HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent / "conversation-loop-evaluation-dashboard.html"
 EXPANDED = HERE.parent / "expanded_runs" / "expanded_runs.json"
 OUT = HERE / "experiment-studio.html"
-JS_ORDER = ["core.js", "design.js", "interviews.js", "evaluate.js", "compare.js", "app.js"]
+JS_ORDER = ["judge_rubric.js", "core.js", "judge2.js", "design.js", "interviews.js", "evaluate.js", "compare.js", "app.js"]
 KEEP = ["persona_texts", "format_block", "cycles", "products", "sessions", "azure_default", "insights"]
 
 

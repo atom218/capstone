@@ -73,10 +73,6 @@ function humanReviewsForItem(itemIdStr) {
     .map((x) => ({ ...x, name: reviewerNameFromKey(x.ek), st: reviewStage(x.r) }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
-function llmReviewForItem(itemIdStr, cfg = getConn()) {
-  const ek = judgeLaneKey(cfg);
-  return { ek, review: (STORE.reviews[ek] && STORE.reviews[ek][itemIdStr]) || null };
-}
 function scoreText(v) {
   if (v == null) return "—";
   if (v === "na" || v === "n/a") return "N/A";
@@ -117,8 +113,7 @@ function llmReviewComplete(itemIdStr, ek) {
     return scoreVal(rev, c.id) !== undefined;
   });
 }
-function judgeQueueStats(items, cfg = getConn()) {
-  const ek = judgeLaneKey(cfg);
+function judgeQueueStats(items, ek = PREVIOUS_JUDGE_KEY) {
   const doneSet = new Set(items.filter((id) => llmReviewComplete(id, ek)));
   const pending = items.filter((id) => !doneSet.has(id));
   return { ek, total: items.length, done: doneSet.size, pending: pending.length, next: pending[0] || null };
@@ -185,32 +180,29 @@ const Evaluate = {
             ? `<div class="field"><label for="revName">Your name</label><input id="revName" data-bind="reviewer-name" value="${esc(STORE.reviewer.name)}" placeholder="First name"/></div>`
             : STORE.reviewer.lane === "jev"
               ? `<p class="small muted">Scores entered here are filed under Jev.</p>`
-              : `<div class="stack">
-                  <p class="small muted">Use this lane to run automated scoring. API key and endpoint are set in Model connection.</p>
-                  <p class="tiny faint">Queue: ${judge.total} items · Pending for this model: ${judge.pending}${judge.next ? ` · Next: ${esc(anonCode(judge.next))}` : ""}</p>
-                  <div class="row"><button class="btn sm" data-action="conn">Model connection / API key</button>${connReady() ? `<button class="btn sm primary" data-action="judge-run">Run now</button><button class="btn sm ghost" data-action="judge-run-force">Re-run all</button>` : ""}</div>
-                </div>`}
+              : `<p class="small muted">Automated judges are run from the LLM judges panel below. Scores cannot be entered by hand in this lane.</p>`}
         </section>
         <section class="panel panel-pad">
           <h3 style="margin-bottom:10px">Queue coverage by evaluator</h3>
           <div class="lanes">${EVALUATORS.map((ev) => {
             const full = items.filter((id) => reviewsFor(id).some((x) => x.lane === ev.id && x.r.implSubmittedAt)).length;
             const part = items.filter((id) => reviewsFor(id).some((x) => x.lane === ev.id && !x.r.implSubmittedAt && x.r.commonSubmittedAt)).length;
-            return `<div class="lane"><span>${ev.name}</span><div class="bar" title="${full} complete, ${part} with common scores only"><i style="width:${(100 * full) / Math.max(1, items.length)}%"></i><i class="part" style="width:${(100 * part) / Math.max(1, items.length)}%"></i></div><span class="small faint">${full}/${items.length}</span></div>`;
+            return `<div class="lane"><span title="${esc(ev.name)}">${esc(ev.short || ev.name)}</span><div class="bar" title="${full} complete, ${part} with common scores only"><i style="width:${(100 * full) / Math.max(1, items.length)}%"></i><i class="part" style="width:${(100 * part) / Math.max(1, items.length)}%"></i></div><span class="small faint">${full}/${items.length}</span></div>`;
           }).join("")}</div>
           <p class="tiny faint" style="margin-top:10px">This shows completion only. Completed reviews can still disagree, and Compare results shows where they do.</p>
         </section>
         ${this.scopePanel(u)}
+        ${this.rubricPanel(items)}
         <section class="panel panel-pad stack">
-          <h3>LLM judge</h3>
-          <p class="small muted">Scores every response in this queue with the same 0-3 rubric and then writes a short overall summary per interview.</p>
-          <p class="tiny faint">Model lane: ${esc(judge.ek.replace(/^llm:/, ""))} · Queue ${judge.total} · Pending ${judge.pending}</p>
-          <div class="row"><button class="btn ghost sm" data-action="conn">Model connection / API key</button></div>
-          ${JUDGE.running ? `<div class="row"><div class="grow"><div class="lane"><span class="small">Scoring</span><div class="bar"><i style="width:${(100 * JUDGE.done) / Math.max(1, JUDGE.total)}%"></i></div><span class="small">${JUDGE.done}/${JUDGE.total}</span></div></div><button class="btn sm" data-action="judge-stop">Stop</button></div>`
-            : `<div class="row wrap"><button class="btn" data-action="judge-run">${connReady() ? "Run judge on pending queue items" : "Connect a model to run the judge"}</button>${connReady() ? `<button class="btn ghost" data-action="judge-run-force">Run again on all items</button><button class="btn ghost" data-action="judge-summaries">Generate interview summaries</button>` : ""}</div>`}
-          ${JUDGE.error ? `<div class="note warn small">${esc(JUDGE.error)}</div>` : ""}
-          ${JUDGE.last ? `<div class="note small">${esc(JUDGE.last)}</div>` : ""}
-          ${this.judgeSummaryPanel(items)}
+          <details>
+            <summary class="small" style="cursor:pointer"><b>Claude (previous rubric)</b> · ${judge.done}/${judge.total} scored · read only</summary>
+            <p class="tiny faint" style="margin-top:8px">The earlier Claude scores stay in their own lane (${esc(PREVIOUS_JUDGE_KEY)}) and are never overwritten. They appear next to the new judges when you open a response.</p>
+            ${JUDGE.running ? `<div class="row"><div class="grow"><div class="lane"><span class="small">Summaries</span><div class="bar"><i style="width:${(100 * JUDGE.done) / Math.max(1, JUDGE.total)}%"></i></div><span class="small">${JUDGE.done}/${JUDGE.total}</span></div></div><button class="btn sm" data-action="judge-stop">Stop</button></div>`
+              : `<div class="row wrap" style="margin-top:6px"><button class="btn ghost sm" data-action="judge-summaries" ${connReady() ? "" : "disabled"}>Generate interview summaries</button></div>`}
+            ${JUDGE.error ? `<div class="note warn small">${esc(JUDGE.error)}</div>` : ""}
+            ${JUDGE.last ? `<div class="note small">${esc(JUDGE.last)}</div>` : ""}
+            ${this.judgeSummaryPanel(items)}
+          </details>
         </section>
       </aside>
     </div>`;
@@ -230,6 +222,66 @@ const Evaluate = {
     });
     if (!rows.length) return `<p class="tiny faint">Interview-level summaries appear here after the batch judge run finishes.</p>`;
     return `<div class="stack">${rows.map(({ runId, row }) => `<div class="note"><div class="small"><b>${esc(anonCode(runId + "#0").replace("Q1", "Interview"))}</b> · ${esc(fmtTime(row.at || ""))}</div><div class="small" style="white-space:pre-wrap;margin-top:4px">${esc(row.text)}</div></div>`).join("")}</div>`;
+  },
+  /* Every evaluator's score for one response, criterion by criterion. Hover a cell for the rationale. */
+  judgeComparison(id, it, teamRows) {
+    const lane = (ek) => (STORE.reviews[ek] && STORE.reviews[ek][id]) || null;
+    const cols = [
+      { name: "Human", sub: teamRows.length ? `avg of ${teamRows.length}` : "none yet", human: true },
+      { name: "Claude", sub: "previous rubric", rev: lane(PREVIOUS_JUDGE_KEY) },
+      ...RUBRIC_JUDGES.map((j) => ({ name: j.name.replace(" (new rubric)", ""), sub: "new rubric", rev: lane(j.key), rubric: true })),
+      { name: "Jev", sub: "", rev: lane("jev") },
+    ];
+    const crits = [...COMMON, ...(it.run.cfg.arm === "grounded" ? IMPL : [])];
+    const cell = (col, cid) => {
+      if (col.human) return `<td><b>${esc(scoreText(humanMeanScore(teamRows, cid)))}</b></td>`;
+      const s = col.rev && col.rev.scores && col.rev.scores[cid];
+      if (!s) return `<td class="faint">—</td>`;
+      const label = s.status === "insufficient_evidence" ? "Insuff." : scoreText(s.v);
+      const tip = [s.status && s.status !== "scored" ? s.status.replace("_", " ") : "", s.note || "", ...(s.evidence || []).map((e) => `“${e.text}”`)].filter(Boolean).join("\n");
+      return `<td title="${esc(tip)}"><b>${esc(label)}</b></td>`;
+    };
+    const rubricRevs = RUBRIC_JUDGES.map((j) => ({ j, rev: lane(j.key) })).filter((x) => x.rev);
+    return `<section class="panel panel-pad">
+      <div class="spread"><h3>All evaluators on this response</h3><span class="small faint">${crits.length} criteria · hover a score for its rationale</span></div>
+      <div class="judge-table-wrap"><table class="judge-table">
+        <thead><tr><th>Criterion</th>${cols.map((c) => `<th>${esc(c.name)}<span class="tiny faint">${esc(c.sub)}</span></th>`).join("")}</tr></thead>
+        <tbody>${crits.map((c) => `<tr><td class="crit-name">${esc(c.name)}</td>${cols.map((col) => cell(col, c.id)).join("")}</tr>`).join("")}</tbody>
+      </table></div>
+      <p class="tiny faint" style="margin-top:6px">N/A means not applicable (for example conversation consistency at Q1). Insuff. means the judge found a required input missing. The previous Claude run did not score human likeness or contextual responsiveness.</p>
+      ${rubricRevs.length ? `<details style="margin-top:8px"><summary class="small" style="cursor:pointer">New-rubric rationales and factual flags</summary>
+        <div class="stack" style="margin-top:8px">${crits.map((c) => `<div class="small"><b>${esc(c.name)}</b>${rubricRevs.map(({ j, rev }) => {
+          const s = rev.scores && rev.scores[c.id]; if (!s) return "";
+          return `<div class="tiny" style="margin-top:2px"><b>${esc(j.short)} · ${esc(s.status === "insufficient_evidence" ? "Insuff." : scoreText(s.v))}</b> — ${esc(s.note || "")}${s.implication ? ` <i>Implication: ${esc(s.implication)}</i>` : ""}</div>`;
+        }).join("")}</div>`).join("")}
+        ${rubricRevs.map(({ j, rev }) => (rev.factualFlags || []).length ? `<div class="note warn tiny"><b>${esc(j.short)} factual flags:</b> ${rev.factualFlags.map((f) => `${esc(f.claim)} — ${esc(f.concern)}`).join("<br/>")}</div>` : "").join("")}
+        </div></details>` : ""}
+    </section>`;
+  },
+  /* New-rubric judges: progress on this queue and a way to fill any gaps. Results sync to the whole team. */
+  rubricPanel(items) {
+    const rows = RUBRIC_JUDGES.map((j) => {
+      const st = RUBRIC_RUN[j.id];
+      const lane = STORE.reviews[j.key] || {};
+      const done = items.filter((id) => rubricReviewComplete(lane[id])).length;
+      const pending = items.length - done;
+      return `<div class="stack" style="gap:6px">
+        <div class="spread"><b class="small">${esc(j.name)}</b><span class="small faint">${done}/${items.length} scored</span></div>
+        <div class="row"><div class="lane grow" style="grid-template-columns:minmax(0,1fr)"><div class="bar"><i style="width:${(100 * (st.running ? st.done : done)) / Math.max(1, items.length)}%"></i></div></div>
+          ${st.running ? `<button class="btn sm" data-action="rubric-stop" data-j="${j.id}">Stop</button>`
+            : `<button class="btn sm" data-action="rubric-run" data-j="${j.id}" ${pending ? "" : "disabled"}>${pending ? `Score ${pending} pending` : "All scored"}</button>`}</div>
+        ${st.last ? `<p class="tiny faint">${esc(st.last)}</p>` : ""}
+        ${st.errors.length ? `<div class="note warn tiny">${st.errors.slice(0, 3).map(esc).join("<br/>")}${st.errors.length > 3 ? `<br/>…and ${st.errors.length - 3} more` : ""}</div>` : ""}
+      </div>`;
+    }).join("");
+    const shardErr = CloudSync.state.shardError;
+    return `<section class="panel panel-pad stack">
+      <h3>LLM judges · new rubric</h3>
+      <p class="small muted">Claude and GPT-6.1 score each answer with the rubric document (${esc(JUDGE_RUBRIC_VERSION)}): a blinded pass for the seven common criteria, then a separate journey pass for grounded interviews. The earlier Claude scores are kept unchanged.</p>
+      ${rows}
+      <p class="tiny faint">Scores save to the shared workspace, so everyone on the team sees them. Open any response to compare them with human, Jev and earlier Claude scores.</p>
+      ${shardErr ? `<div class="note warn tiny">Judge sync: ${esc(shardErr)}</div>` : ""}
+    </section>`;
   },
 
   /* Questions down, blinded interviews across: the whole queue at a glance. */
@@ -322,8 +374,6 @@ const Evaluate = {
     const cyc = run.cfg.arm === "grounded" ? DATA.cycles[run.cfg.journey] : null;
     const cycleName = cyc ? cyc.short_title.replace(/^Cycle \d: /, "") : "";
     const teamRows = humanReviewsForItem(u.item);
-    const llmNow = llmReviewForItem(u.item);
-    const compareCrit = [...JUDGE_COMMON, ...(run.cfg.arm === "grounded" ? JUDGE_IMPL : [])];
     const me = (STORE.reviewer.name || "").trim();
     return `<div class="spread" style="margin-bottom:16px">
         <div class="row"><button class="btn ghost" data-action="eval-home">← Queue</button><h2>${anonCode(u.item)}</h2><span class="chip">Interview ${interviewNumber(u.item, blindInterviews(queueSet()))}, Q${it.i + 1}</span><span class="chip">${stageLabel(stage)}</span></div>
@@ -344,19 +394,7 @@ const Evaluate = {
             </div>
             <p class="tiny faint" style="margin-top:8px">What changes each question: the question text (and screen when present) plus the live state cue. The approved profile and product pack stay the same for this interview.</p>
           </section>
-          <section class="panel panel-pad">
-            <div class="spread"><h3>Human vs LLM on this response</h3><span class="small faint">${compareCrit.length} criteria</span></div>
-            <div class="row wrap" style="margin-top:8px;align-items:stretch">
-              <div class="note focus small grow" style="min-width:280px">
-                <div class="spread"><b>Human (team average)</b><span class="faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
-                <div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(humanMeanScore(teamRows, c.id)))}</b></div>`).join("")}</div>
-              </div>
-              <div class="note small grow" style="min-width:280px">
-                <div class="spread"><b>LLM (${esc(llmNow.ek.replace(/^llm:/, ""))})</b><span class="faint">${llmNow.review && llmNow.review.implSubmittedAt ? fmtTime(llmNow.review.implSubmittedAt) : "not scored yet"}</span></div>
-                ${llmNow.review ? `<div class="stack" style="margin-top:6px">${compareCrit.map((c) => `<div class="spread"><span class="tiny">${esc(c.name)}</span><b>${esc(scoreText(scoreVal(llmNow.review, c.id)))}</b></div>`).join("")}</div>` : `<p class="tiny faint" style="margin-top:6px">Run the LLM judge to populate this side.</p>`}
-              </div>
-            </div>
-          </section>
+          ${this.judgeComparison(u.item, it, teamRows)}
           <section class="panel panel-pad">
             <div class="spread"><h3>Team evaluations on this response</h3><span class="small faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
             ${teamRows.length ? `<div class="stack" style="margin-top:8px">${teamRows.map((x) => {
@@ -539,8 +577,8 @@ const Evaluate = {
       if (it.run.cfg.arm !== "grounded") IMPL.forEach((c) => (rev.scores[c.id] = { v: "na", evidence: [], note: "Baseline" }));
       rev.implSubmittedAt = new Date().toISOString(); touch(rev); save();
     });
-    App.on("judge-run", () => { if (!connReady()) return connModal(() => runJudge()); runJudge(); });
-    App.on("judge-run-force", () => { if (!connReady()) return connModal(() => runJudge(true)); runJudge(true); });
+    App.on("rubric-run", (el) => { runRubricJudge(el.dataset.j, queueItems()); });
+    App.on("rubric-stop", (el) => { const st = RUBRIC_RUN[el.dataset.j]; if (st) st.stop = true; });
     App.on("judge-summaries", () => { if (!connReady()) return connModal(() => runJudge(false, true)); runJudge(false, true); });
     App.on("judge-stop", () => { JUDGE.stop = true; });
     onDrop("evidence", (text, target) => {

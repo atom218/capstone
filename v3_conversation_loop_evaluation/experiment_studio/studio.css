@@ -280,7 +280,15 @@ body.dragging * { cursor: grabbing !important; }
 .resume .prog-big i { background: #fff; display: block; }
 .resume .prog-big i.half { background: rgba(255,255,255,.45); }
 .lanes { display: grid; gap: 10px; }
-.lane { display: grid; grid-template-columns: 74px minmax(0,1fr) 64px; gap: 10px; align-items: center; font-size: 13px; }
+.lane { display: grid; grid-template-columns: 82px minmax(0,1fr) 64px; gap: 10px; align-items: center; font-size: 13px; }
+.lane > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.judge-table-wrap { overflow-x: auto; margin-top: 10px; }
+.judge-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.judge-table th, .judge-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: center; }
+.judge-table th { font-weight: 600; vertical-align: bottom; }
+.judge-table th span { display: block; font-weight: 400; }
+.judge-table td.crit-name, .judge-table th:first-child { text-align: left; }
+.judge-table td[title] { cursor: help; }
 .lane .bar { height: 10px; border-radius: 5px; background: var(--sunk); overflow: hidden; display: flex; }
 .lane .bar i { display: block; height: 100%; background: var(--ink-2); }
 .lane .bar i.part { background: var(--line-2); }
