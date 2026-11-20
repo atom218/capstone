@@ -206,7 +206,15 @@ async function rubricPass(it, judge, pass, log) {
   const packet = rubricPacket(it, pass);
   let note = "", last = null;
   for (let attempt = 1; attempt <= RUBRIC_MAX_ATTEMPTS; attempt++) {
-    const text = await rubricCall(judge, packet.parts, note);
+    let text;
+    try { text = await rubricCall(judge, packet.parts, note); }
+    catch (err) {
+      /* An interrupted reply (for example a content-filter stop) is retried like an invalid one. */
+      last = [String(err.message || err)];
+      if (log) log(`${judge.short} ${anonCode(it.id)} ${pass} attempt ${attempt}: ${last[0]}`);
+      if (attempt === RUBRIC_MAX_ATTEMPTS || /^No backend connection|^HTTP 4\d\d/.test(last[0])) throw err;
+      continue;
+    }
     const out = parseJsonLoose(text);
     const v = rubricValidate(out, packet, it);
     if (!v.issues.length) return { packet, out, judgments: v.judgments, attempts: attempt };

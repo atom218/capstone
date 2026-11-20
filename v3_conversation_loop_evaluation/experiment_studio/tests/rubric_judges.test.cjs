@@ -43,6 +43,7 @@ function session() {
       const it = itemContext(CURRENT_ITEM);
       const out = validOutput(rubricPacket(it, pass));
       if (MODE === 'bad-then-good' && CALLS.length === 1) out.judgments[0].evidence_refs[0].excerpt = 'words that are not in the answer';
+      if (MODE === 'filtered-then-good' && CALLS.length === 1) throw new Error('model response incomplete: {"reason":"content_filter"}');
       if (MODE === 'always-bad') out.judgments.pop();
       return JSON.stringify(out);
     };
@@ -126,6 +127,9 @@ test('an invalid response is retried with the problems listed; persistent failur
   s.run('CALLS.length = 0; MODE = "always-bad"; CURRENT_ITEM = "C2_sub_coarse_full#2"');
   await assert.rejects(s.run('judgeItemRubric(CURRENT_ITEM, rubricJudge("claude2"))'), /did not return a valid rubric judgment after 3 attempts/);
   assert.equal(s.run('(STORE.reviews["llm:claude-opus-5-5-fast:rubric2"] || {})["C2_sub_coarse_full#2"]'), undefined);
+  s.run('CALLS.length = 0; MODE = "filtered-then-good"; CURRENT_ITEM = "S1_sub_text_only_full#3"');
+  await s.run('judgeItemRubric(CURRENT_ITEM, rubricJudge("gpt2"))');
+  assert.ok(s.run('rubricReviewComplete(STORE.reviews["llm:gpt-6.1-sol:rubric2"]["S1_sub_text_only_full#3"])'), 'a content-filter stop is retried');
 });
 
 test('a scored trajectory and a conversation deduction must quote the earlier answer', () => {
