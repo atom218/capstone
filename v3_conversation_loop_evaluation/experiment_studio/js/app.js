@@ -101,6 +101,8 @@ const App = {
       <p class="muted small">Reviews, observations and launched runs are saved in this browser as you work. Export them to share with the team or keep a copy in the repo's <code>results/</code> folder.</p>
       <div class="count-row"><div class="count"><b>${nRev}</b><span>reviews</span></div><div class="count"><b>${STORE.observations.length}</b><span>observations</span></div><div class="count"><b>${Object.keys(STORE.liveRuns).length}</b><span>launched runs</span></div></div>
       <div class="row wrap"><button class="btn" data-action="export-json">Export everything (JSON)</button><button class="btn" data-action="export-csv">Export scores (CSV)</button>
+        <button class="btn" data-action="export-compare">Export all evaluators side by side (CSV)</button>
+        <button class="btn" data-action="export-rubric">Export new-rubric rationales (CSV)</button>
         <label class="btn" style="cursor:pointer">Import a JSON export<input type="file" accept="application/json" id="importFile" class="sr"/></label>
         <button class="btn" data-action="cloud">Team sync settings</button>
         <button class="btn" data-action="cloud-migrate">Upload local data to team workspace</button></div>`);
@@ -132,6 +134,8 @@ const App = {
     this.on("menu", () => this.menu());
     this.on("export-json", () => exportAll());
     this.on("export-csv", () => exportScoresCsv());
+    this.on("export-compare", () => exportComparisonCsv());
+    this.on("export-rubric", () => exportRubricDetailCsv());
     this.on("new-study", () => { STORE.draft = null; draft(); persist(); this.render(); toast("Started a new study"); });
     this.onInput("study-name", (el) => { draft().name = el.value; persist(); }, "blur-render");
 

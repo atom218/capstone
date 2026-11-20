@@ -148,6 +148,22 @@ test('judge lanes split deterministically across documents', () => {
   assert.equal(s.run('shardDocId("ws", rubricJudge("gpt2"), 1)'), 'ws--judge-gpt-rubric2-p1');
 });
 
+test('the comparison export puts every evaluator side by side per criterion', async () => {
+  const s = session();
+  s.run('CURRENT_ITEM = "C1_sub_fine_full#3"');
+  await s.run('judgeItemRubric(CURRENT_ITEM, rubricJudge("gpt2"))');
+  const rows = s.json('comparisonRows()');
+  const head = rows[0];
+  const at = head.indexOf('persona_human_median');
+  assert.deepEqual(head.slice(at, at + 6), ['persona_human_median', 'persona_human_n', 'persona_claude_previous', 'persona_claude_new', 'persona_gpt_new', 'persona_jev']);
+  const row = rows.find((r) => r[0] === 'C1_sub_fine_full#3');
+  assert.match(row[1], /^Q4 · Subscription Management Assistant · .+ · Full biography$/);
+  assert.equal(row[at + 2], 2, 'previous Claude score kept');
+  assert.equal(row[at + 4], 2, 'new GPT score');
+  const detail = s.json('rubricDetailRows()');
+  assert.ok(detail.some((r) => r[2] === 'GPT-6.1 (new rubric)' && r[3] === 'Trajectory respected' && r[6] === 'Test rationale.'));
+});
+
 test('the main workspace document never carries the new judge lanes', () => {
   const s = session();
   s.run('STORE.reviews["llm:gpt-6.1-sol:rubric2"] = { "C1_sub_fine_full#3": { scores: {} } }');

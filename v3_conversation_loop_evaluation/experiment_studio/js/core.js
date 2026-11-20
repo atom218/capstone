@@ -1475,7 +1475,8 @@ function exportAll() {
   const out = { exported_at: new Date().toISOString(), loop: LOOP_VERSION, reviews: STORE.reviews, observations: STORE.observations, liveRuns: STORE.liveRuns, liveStudies: STORE.liveStudies, judgeSummaries: STORE.judgeSummaries };
   download(`experiment-studio-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(out, null, 2));
 }
-function exportScoresCsv() {
+function exportScoresCsv() { download("experiment-studio-scores.csv", csvText(scoreRows()), "text/csv"); }
+function scoreRows() {
   const rows = [["evaluator", "item", "anon_code", "run_id", "arm", "journey", "question", ...ALL_CRIT.map((c) => c.id), ...COMMON.map((c) => "common_audit_" + c.id), "factual_concern", "illustrative", "common_submitted_at", "impl_submitted_at", "rubric_version", "additional_submitted_at", "additional_rubric_version", "judge_statuses"]];
   Object.entries(STORE.reviews).forEach(([ek, items]) => Object.entries(items).forEach(([id, r]) => {
     const it = itemContext(id); if (!it) return;
@@ -1484,8 +1485,53 @@ function exportScoresCsv() {
       ...ALL_CRIT.map((c) => (scoreVal(r, c.id) ?? "")), ...COMMON.map((c) => (r.commonAudit ? r.commonAudit[c.id] ?? "" : "")),
       r.flags && r.flags.factual && r.flags.factual.on ? (r.flags.factual.note || "yes") : "", r.demo ? "yes" : "", r.commonSubmittedAt || "", r.implSubmittedAt || "", r.rubricVersion || "", r.additionalSubmittedAt || "", r.additionalRubricVersion || "", statuses]);
   }));
-  download("experiment-studio-scores.csv", rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n"), "text/csv");
+  return rows;
 }
+function csvText(rows) { return rows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n"); }
+function itemReadable(id) {
+  const it = itemContext(id); const c = it.run.cfg;
+  const persona = (PERSONAS.find((p) => p.id === c.persona) || {}).variant || c.persona;
+  const cond = c.arm === "grounded" ? `${DATA.cycles[c.journey].short_title} · ${DETAIL[c.detail].name} · ${TIMING[c.timing].name}` : "Baseline (no journey)";
+  return `Q${it.i + 1} · ${productOf(c.product).name} · ${cond} · ${persona}`;
+}
+function exportCell(rev, cid) {
+  const s = rev && rev.scores && rev.scores[cid];
+  if (!s) return "";
+  if (s.status === "insufficient_evidence") return "insufficient";
+  return s.v === "na" ? "N/A" : s.v ?? "";
+}
+/* One row per evaluated answer; for every criterion the evaluators sit side by side. */
+function comparisonRows() {
+  const lanes = [["claude_previous", PREVIOUS_JUDGE_KEY], ...RUBRIC_JUDGES.map((j) => [`${j.id === "claude2" ? "claude" : "gpt"}_new`, j.key]), ["jev", "jev"]];
+  const head = ["item", "item_readable", "run_id", "question", "product", "condition", "persona_variant"];
+  ALL_CRIT.forEach((c) => head.push(`${c.id}_human_median`, `${c.id}_human_n`, ...lanes.map(([n]) => `${c.id}_${n}`)));
+  const rows = [head];
+  rubricTargetItems().forEach((id) => {
+    const it = itemContext(id); const c = it.run.cfg;
+    const row = [id, itemReadable(id), it.run.id, it.i + 1, productOf(c.product).name, c.arm === "grounded" ? `${DATA.cycles[c.journey].short_title} · ${DETAIL[c.detail].name} · ${TIMING[c.timing].name}` : "Baseline (no journey)", (PERSONAS.find((p) => p.id === c.persona) || {}).variant || c.persona];
+    ALL_CRIT.forEach((cr) => {
+      const h = humanScoreSummary(id, cr.id);
+      row.push(h.value === "na" ? "N/A" : h.value === undefined ? "" : h.value, h.numeric.length, ...lanes.map(([, ek]) => exportCell(STORE.reviews[ek] && STORE.reviews[ek][id], cr.id)));
+    });
+    rows.push(row);
+  });
+  return rows;
+}
+/* One row per answer, judge and criterion, with the new-rubric rationale and quoted evidence. */
+function rubricDetailRows() {
+  const rows = [["item", "item_readable", "judge", "criterion", "status", "score", "rationale", "evidence", "product_implication", "issue_type", "factual_flags"]];
+  rubricTargetItems().forEach((id) => RUBRIC_JUDGES.forEach((j) => {
+    const rev = STORE.reviews[j.key] && STORE.reviews[j.key][id]; if (!rev) return;
+    const flags = (rev.factualFlags || []).map((f) => `${f.claim} — ${f.concern}`).join(" | ");
+    ALL_CRIT.forEach((c) => {
+      const s = rev.scores && rev.scores[c.id]; if (!s) return;
+      rows.push([id, itemReadable(id), j.name, c.name, s.status || "", s.status === "scored" ? s.v : "", s.note || "", (s.evidence || []).map((e) => `${e.source ? e.source + ": " : ""}“${e.text}”`).join(" | "), s.implication || "", s.issueType || "", c.id === "persona" ? flags : ""]);
+    });
+  }));
+  return rows;
+}
+function exportComparisonCsv() { download("experiment-studio-comparison-all-evaluators.csv", csvText(comparisonRows()), "text/csv"); }
+function exportRubricDetailCsv() { download("experiment-studio-new-rubric-rationales.csv", csvText(rubricDetailRows()), "text/csv"); }
 /* ---------- import validation ----------
    Exports are shared between teammates, so every field is checked before it is stored.
    IDs must be plain tokens; enums must be known values; text stays text (it is always escaped when shown). */

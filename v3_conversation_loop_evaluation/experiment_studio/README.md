@@ -284,6 +284,43 @@ browser. When Team sync is enabled, the same data is also merged into Firestore
 reviewers. The **Data** menu still exports everything as JSON (which can be
 imported elsewhere) or exports scores as CSV, for example into `results/`.
 
+## LLM judges (rubric document)
+
+Two judges score every answer the team has evaluated using
+`../LLM-judge-rubric-and-instructions.docx`, version `llm-judge-rubric-2026-11-19`:
+Claude (`claude-opus-5-5-fast`) and GPT-6.1 (`gpt-6.1-sol`), both on the
+team's Azure resource through the backend proxy, which holds the key.
+
+- **Two passes, as the rubric requires.** A blinded common pass scores persona,
+  conversation, specificity, consequence, insight, likeness and context. It
+  sees the profile, earlier and current questions and answers, and the
+  screens shown up to that turn, with neutral IDs and no condition or journey
+  details. A separate journey pass scores cue_fit, substance and trajectory
+  for grounded interviews, using the exact behavior rules, state lines,
+  timing and transition. Baseline journey checks are `not_applicable`.
+- **Checked before saving.** Every criterion must be returned once with a valid
+  status, and every quote must appear in the cited source. Q1 conversation
+  and trajectory must be `not_applicable`. Scored trajectories and
+  conversation deductions must quote the earlier answer. Invalid replies are
+  retried with the problems listed. Nothing partial is stored.
+- **Earlier scores are kept.** The previous Claude run stays in
+  `llm:claude-opus-5-5-fast`. New scores go to `llm:claude-opus-5-5-fast:rubric2`
+  and `llm:gpt-6.1-sol:rubric2`, stored in their own Firestore documents
+  (`<workspace>--judge-claude-rubric2-p0/p1`, `--judge-gpt-rubric2-p0/p1`), so
+  the main workspace document stays under the 1 MiB limit.
+
+Open any response in **Evaluate** to compare Human, Claude (previous), Claude
+(new), GPT-6.1 (new) and Jev side by side; hover a score for its rationale.
+**Data → Export all evaluators side by side (CSV)** and **Export new-rubric
+rationales (CSV)** download the results. From a terminal:
+
+```
+python3 tools/extract_rubric.py && python3 build_studio.py   # after editing the .docx
+node tools/run_rubric_judges.cjs                             # score any pending answers
+node tools/export_scores.cjs                                 # write the CSVs to exports/
+node --test tests/*.cjs
+```
+
 ## How comparisons stay matched
 
 A launch always gives both sides the same number of interviews. An existing
