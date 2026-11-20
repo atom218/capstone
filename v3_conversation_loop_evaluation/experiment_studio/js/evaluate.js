@@ -80,14 +80,6 @@ function scoreText(v) {
   if (!Number.isFinite(n)) return String(v);
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
-function humanMeanScore(rows, cid) {
-  const vals = rows.map((x) => scoreVal(x.r, cid)).filter((v) => typeof v === "number" && Number.isFinite(v));
-  if (!vals.length) {
-    return rows.some((x) => scoreVal(x.r, cid) === "na") ? "na" : undefined;
-  }
-  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-  return Number.isInteger(mean) ? mean : Number(mean.toFixed(1));
-}
 function teammateHover(itemIdStr) {
   const hs = humanReviewsForItem(itemIdStr);
   if (!hs.length) return "No teammate reviews yet";
@@ -226,15 +218,16 @@ const Evaluate = {
   /* Every evaluator's score for one response, criterion by criterion. Hover a cell for the rationale. */
   judgeComparison(id, it, teamRows) {
     const lane = (ek) => (STORE.reviews[ek] && STORE.reviews[ek][id]) || null;
+    const submitted = teamRows.filter((x) => x.r.commonSubmittedAt && !x.r.demo).length;
     const cols = [
-      { name: "Human", sub: teamRows.length ? `avg of ${teamRows.length}` : "none yet", human: true },
+      { name: "Human (submitted median)", sub: `${submitted} submitted reviewer${submitted === 1 ? "" : "s"}`, human: true },
       { name: "Claude", sub: "previous rubric", rev: lane(PREVIOUS_JUDGE_KEY) },
       ...RUBRIC_JUDGES.map((j) => ({ name: j.name.replace(" (new rubric)", ""), sub: "new rubric", rev: lane(j.key), rubric: true })),
       { name: "Jev", sub: "", rev: lane("jev") },
     ];
     const crits = [...COMMON, ...(it.run.cfg.arm === "grounded" ? IMPL : [])];
     const cell = (col, cid) => {
-      if (col.human) return `<td><b>${esc(scoreText(humanMeanScore(teamRows, cid)))}</b></td>`;
+      if (col.human) return `<td><b>${esc(scoreText(humanScoreSummary(id, cid).value))}</b></td>`;
       const s = col.rev && col.rev.scores && col.rev.scores[cid];
       if (!s) return `<td class="faint">—</td>`;
       const label = s.status === "insufficient_evidence" ? "Insuff." : scoreText(s.v);
@@ -248,7 +241,11 @@ const Evaluate = {
         <thead><tr><th>Criterion</th>${cols.map((c) => `<th>${esc(c.name)}<span class="tiny faint">${esc(c.sub)}</span></th>`).join("")}</tr></thead>
         <tbody>${crits.map((c) => `<tr><td class="crit-name">${esc(c.name)}</td>${cols.map((col) => cell(col, c.id)).join("")}</tr>`).join("")}</tbody>
       </table></div>
-      <p class="tiny faint" style="margin-top:6px">N/A means not applicable (for example conversation consistency at Q1). Insuff. means the judge found a required input missing. The previous Claude run did not score human likeness or contextual responsiveness.</p>
+      <details class="human-ratings-breakdown">
+        <summary>Individual human scores and reviewer counts</summary>
+        <div class="human-ratings-grid">${crits.map((c) => `<div><b class="tiny">${esc(c.name)}</b>${humanRatingDetails(id, c.id)}</div>`).join("")}</div>
+      </details>
+      <p class="tiny faint" style="margin-top:6px">— = no score recorded. N/A = not applicable (for example conversation consistency at Q1). Insuff. = the judge found a required input missing. Human medians exclude drafts, N/A and missing scores. The previous Claude run did not score human likeness or contextual responsiveness.</p>
       ${rubricRevs.length ? `<details style="margin-top:8px"><summary class="small" style="cursor:pointer">New-rubric rationales and factual flags</summary>
         <div class="stack" style="margin-top:8px">${crits.map((c) => `<div class="small"><b>${esc(c.name)}</b>${rubricRevs.map(({ j, rev }) => {
           const s = rev.scores && rev.scores[c.id]; if (!s) return "";
