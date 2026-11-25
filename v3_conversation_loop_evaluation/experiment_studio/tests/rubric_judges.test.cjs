@@ -168,6 +168,19 @@ test('the comparison export puts every evaluator side by side per criterion', as
   assert.ok(detail.some((r) => r[2] === 'GPT-6.1 (new rubric)' && r[3] === 'Trajectory respected' && r[6] === 'Test rationale.'));
 });
 
+test('every product shows the question and generated answer before any score panels', () => {
+  const s = session();
+  for (const id of ['C1_sub_fine_full#2', 'C1_cashflow_fine_full#2', 'C1_sexual_fine_full#0', 'C1_wellness_fine_full#5']) {
+    const html = s.run(`evalUi().item = ${JSON.stringify(id)}; evalUi().view = "item"; Evaluate.itemView(evalUi())`);
+    const reply = s.run(`itemContext(${JSON.stringify(id)}).turn.reply`).slice(0, 30);
+    const answerAt = html.indexOf('id="answerText"');
+    assert.ok(answerAt > 0 && html.slice(answerAt, answerAt + 200).includes(reply.replace(/’/g, '’')), `${id}: answer text rendered`);
+    assert.ok(html.indexOf('class="panel qbox"') < answerAt, `${id}: question before answer`);
+    assert.ok(answerAt < html.indexOf('All evaluators on this response'), `${id}: answer before evaluator scores`);
+    assert.ok(answerAt < html.indexOf('Team evaluations on this response'), `${id}: answer before team scores`);
+  }
+});
+
 test('the main workspace document never carries the new judge lanes', () => {
   const s = session();
   s.run('STORE.reviews["llm:gpt-6.1-sol:rubric2"] = { "C1_sub_fine_full#3": { scores: {} } }');

@@ -391,20 +391,6 @@ const Evaluate = {
             </div>
             <p class="tiny faint" style="margin-top:8px">What changes each question: the question text (and screen when present) plus the live state cue. The approved profile and product pack stay the same for this interview.</p>
           </section>
-          ${this.judgeComparison(u.item, it, teamRows)}
-          <section class="panel panel-pad">
-            <div class="spread"><h3>Team evaluations on this response</h3><span class="small faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
-            ${teamRows.length ? `<div class="stack" style="margin-top:8px">${teamRows.map((x) => {
-              const mineTag = me && x.name === me ? " · you" : "";
-              const common = COMMON.map((c) => `${c.id}:${fmtScore(scoreVal(x.r, c.id))}`).join(" ");
-              const impl = IMPL.map((c) => `${c.id}:${fmtScore(scoreVal(x.r, c.id))}`).join(" ");
-              return `<div class="note focus small">
-                <div class="spread"><b>${esc(x.name)}${mineTag}</b><span class="faint">${stageLabel(x.st)}</span></div>
-                <div class="tiny" style="margin-top:4px"><b>Common:</b> ${esc(common)}</div>
-                <div class="tiny" style="margin-top:2px"><b>Implementation:</b> ${esc(impl)}</div>
-              </div>`;
-            }).join("")}</div>` : `<p class="tiny faint" style="margin-top:8px">No human reviewer has scored this response yet.</p>`}
-          </section>
           <section class="panel qbox">
             <div class="qlabel">Question ${it.i + 1} of 7 · ${isScreen(it.q) ? "shown with a product screen" : "topic-only, no screen"}</div>
             <div class="tiny faint" style="margin:4px 0 10px">${run.cfg.arm === "grounded" ? `Current cue: <code>${esc(it.turn.state_before)}</code>` : "Baseline interview: no journey cue applied."}</div>
@@ -421,6 +407,20 @@ const Evaluate = {
               ${[["profile", "Approved profile"], ["history", `Earlier replies (${it.i})`], ["product", "Product facts"]].map(([k, l]) => `<button class="chip line" data-action="support" data-k="${k}" aria-pressed="${u.support === k}">${l}</button>`).join("")}
             </div>
             ${u.support ? `<div class="support-body">${this.support(it, u.support)}</div>` : `<p class="tiny faint" style="margin-top:8px">Open supporting material only when a criterion needs it.</p>`}
+          </section>
+          ${this.judgeComparison(u.item, it, teamRows)}
+          <section class="panel panel-pad">
+            <div class="spread"><h3>Team evaluations on this response</h3><span class="small faint">${teamRows.length} reviewer${teamRows.length === 1 ? "" : "s"}</span></div>
+            ${teamRows.length ? `<div class="stack" style="margin-top:8px">${teamRows.map((x) => {
+              const mineTag = me && x.name === me ? " · you" : "";
+              const common = COMMON.map((c) => `${c.id}:${fmtScore(scoreVal(x.r, c.id))}`).join(" ");
+              const impl = IMPL.map((c) => `${c.id}:${fmtScore(scoreVal(x.r, c.id))}`).join(" ");
+              return `<div class="note focus small">
+                <div class="spread"><b>${esc(x.name)}${mineTag}</b><span class="faint">${stageLabel(x.st)}</span></div>
+                <div class="tiny" style="margin-top:4px"><b>Common:</b> ${esc(common)}</div>
+                <div class="tiny" style="margin-top:2px"><b>Implementation:</b> ${esc(impl)}</div>
+              </div>`;
+            }).join("")}</div>` : `<p class="tiny faint" style="margin-top:8px">No human reviewer has scored this response yet.</p>`}
           </section>
         </div>
         <section class="panel scorecard" aria-label="Scorecard">
