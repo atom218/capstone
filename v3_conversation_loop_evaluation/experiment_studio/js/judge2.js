@@ -272,10 +272,10 @@ function rubricReviewComplete(rev) {
   return !!(rev && rev.rubricVersion === JUDGE_RUBRIC_VERSION && rev.implSubmittedAt
     && [...RUBRIC_COMMON_IDS, ...RUBRIC_JOURNEY_IDS].every((cid) => rev.scores && rev.scores[cid] && RUBRIC_STATUSES.includes(rev.scores[cid].status)));
 }
-/* Everything the team has evaluated: every answer with at least one review in any lane. */
+/* Everything evaluated so far: every answer with at least one review in any lane, including the rubric judges. */
 function rubricTargetItems() {
   const set = new Set();
-  Object.entries(STORE.reviews).forEach(([ek, items]) => { if (!SHARD_LANES[ek]) Object.keys(items || {}).forEach((id) => set.add(id)); });
+  Object.values(STORE.reviews).forEach((items) => Object.keys(items || {}).forEach((id) => set.add(id)));
   return Array.from(set).filter((id) => itemContext(id)).sort();
 }
 

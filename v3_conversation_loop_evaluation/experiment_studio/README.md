@@ -305,9 +305,12 @@ team's Azure resource through the backend proxy, which holds the key.
   retried with the problems listed. Nothing partial is stored.
 - **Earlier scores are kept.** The previous Claude run stays in
   `llm:claude-opus-5-5-fast`. New scores go to `llm:claude-opus-5-5-fast:rubric2`
-  and `llm:gpt-6.1-sol:rubric2`, stored in their own Firestore documents
-  (`<workspace>--judge-claude-rubric2-p0/p1`, `--judge-gpt-rubric2-p0/p1`), so
-  the main workspace document stays under the 1 MiB limit.
+  and `llm:gpt-6.1-sol:rubric2`, stored in their own Firestore documents, two
+  per product per judge (for example
+  `<workspace>--judge-gpt-rubric2-cash-flow-planning-0` and `-1`), so every
+  answer can be judged while each document and the main workspace document
+  stay under the 1 MiB limit. The original `-p0`/`-p1` documents are an unused
+  backup from before this split (`tools/migrate_judge_shards.cjs`).
 
 Open any response in **Evaluate** to compare Human, Claude (previous), Claude
 (new), GPT-6.1 (new) and Jev side by side; hover a score for its rationale.
@@ -317,6 +320,7 @@ rationales (CSV)** download the results. From a terminal:
 ```
 python3 tools/extract_rubric.py && python3 build_studio.py   # after editing the .docx
 node tools/run_rubric_judges.cjs                             # score any pending answers
+node tools/run_rubric_judges.cjs --products cash-flow-planning,sexual-health   # every answer of these products
 node tools/export_scores.cjs                                 # write the CSVs to exports/
 node --test tests/*.cjs
 ```

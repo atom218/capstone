@@ -94,7 +94,7 @@ async function workspace(studio, base = DEFAULT_BASE) {
     const judges = studio.run("RUBRIC_JUDGES.map((j) => ({ id: j.id, key: j.key }))");
     for (const j of judges) {
       reviews[j.key] = {};
-      for (let p = 0; p < studio.run("SHARD_PARTS"); p++) {
+      for (const p of studio.run("shardPartIds()")) {
         const doc = await readDoc(studio.call("(ws, id, p) => shardDocId(ws, rubricJudge(id), p)", cloud.workspaceId, j.id, p));
         Object.assign(reviews[j.key], ((doc && doc.payload && doc.payload.reviews) || {})[j.key] || {});
       }

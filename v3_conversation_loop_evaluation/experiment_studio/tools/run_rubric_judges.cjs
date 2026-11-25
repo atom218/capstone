@@ -7,6 +7,7 @@
    which holds the Azure key. Completed answers are skipped, so it is safe to rerun.
 
      node tools/run_rubric_judges.cjs                    # both judges, all pending answers
+     node tools/run_rubric_judges.cjs --products cash-flow-planning,sexual-health   # every answer of these products
      node tools/run_rubric_judges.cjs --judges gpt2 --limit 2 --dry-run --show-packet
 */
 "use strict";
@@ -20,6 +21,7 @@ const JUDGE_IDS = opt("judges", "claude2,gpt2").split(",");
 const LIMIT = Number(opt("limit", "0")) || Infinity;
 const CONCURRENCY = Number(opt("concurrency", "4"));
 const ONLY = opt("items", "") ? opt("items", "").split(",") : null;
+const PRODUCTS = opt("products", "") ? opt("products", "").split(",") : null;
 const DRY = flag("dry-run");
 
 (async () => {
@@ -29,18 +31,19 @@ const DRY = flag("dry-run");
   const WORKSPACE = ws.cloud.workspaceId;
   const { main } = await ws.loadAllReviews();
   const judges = JUDGE_IDS.map((id) => run(`rubricJudge(${JSON.stringify(id)})`));
-  const parts = run("SHARD_PARTS");
+  const parts = run("shardPartIds()");
   const docId = (j, p) => call("(ws, id, p) => shardDocId(ws, rubricJudge(id), p)", WORKSPACE, j.id, p);
+  const items = ONLY || (PRODUCTS ? call("(pids) => Object.values(allRuns()).filter((r) => pids.includes(r.cfg.product)).flatMap((r) => r.turns.map((t, i) => (t.status === 'done' ? itemId(r.id, i) : null)).filter(Boolean)).sort()", PRODUCTS) : run("rubricTargetItems()"));
+  const neededParts = new Set(items.map((id) => call("(id) => shardPartOf(id)", id)));
   if (!DRY) {
-    for (const j of judges) for (let p = 0; p < parts; p++) {
+    for (const j of judges) for (const p of parts.filter((x) => neededParts.has(x))) {
       if (await ws.readDoc(docId(j, p))) continue;
       await ws.patchDoc(docId(j, p), { schemaVersion: 1, passcode: main.passcode || ws.cloud.passcode || "", updatedBy: "LLM judge runner", updatedAt: new Date().toISOString(),
         payload: { reviews: { [j.key]: {} }, observations: [], liveRuns: {}, liveStudies: {} } });
       console.log(`Created shared document ${docId(j, p)}`);
     }
   }
-  const items = ONLY || run("rubricTargetItems()");
-  console.log(`${items.length} answers in scope (every answer with a human, Jev or earlier LLM review).`);
+  console.log(`${items.length} answers in scope (${ONLY ? "listed answers" : PRODUCTS ? `every generated answer for ${PRODUCTS.join(", ")}` : "every answer that already has a review"}).`);
   if (flag("show-packet")) {
     console.log(call("(id) => rubricPacketText(rubricPacket(itemContext(id), 'common'))", items[0]));
     if (call("(id) => itemContext(id).run.cfg.arm", items[0]) === "grounded") console.log(call("(id) => rubricPacketText(rubricPacket(itemContext(id), 'journey'))", items[0]));

@@ -145,11 +145,17 @@ test('a scored trajectory and a conversation deduction must quote the earlier an
 test('judge lanes split deterministically across documents', () => {
   const s = session();
   const parts = s.json('(() => { const ids = []; Object.values(SAVED_RUNS).forEach((r) => r.turns.forEach((_, i) => ids.push(itemId(r.id, i)))); return ids.map(shardPartOf); })()');
-  const counts = [0, 0];
-  parts.forEach((p) => counts[p]++);
-  assert.ok(counts[0] > parts.length * 0.35 && counts[1] > parts.length * 0.35, `unbalanced split ${counts}`);
+  const counts = {};
+  parts.forEach((p) => (counts[p] = (counts[p] || 0) + 1));
+  for (const pid of ['subscription-management', 'mental-wellness', 'cash-flow-planning', 'sexual-health']) {
+    const a = counts[`${pid}-0`] || 0, b = counts[`${pid}-1`] || 0;
+    assert.ok(a + b === 189 && a > 60 && b > 60, `${pid} split ${a}/${b}`);
+  }
   assert.equal(s.run('shardPartOf("C1_sub_fine_full#3")'), s.run('shardPartOf("C1_sub_fine_full#3")'));
-  assert.equal(s.run('shardDocId("ws", rubricJudge("gpt2"), 1)'), 'ws--judge-gpt-rubric2-p1');
+  assert.match(s.run('shardPartOf("C1_cashflow_fine_full#3")'), /^cash-flow-planning-[01]$/);
+  assert.ok(s.json('shardPartIds()').every((p) => /^[a-z-]+-[01]$/.test(p)));
+  assert.equal(s.run('shardDocId("ws", rubricJudge("gpt2"), "sexual-health-1")'), 'ws--judge-gpt-rubric2-sexual-health-1');
+  assert.ok(s.run('shardDocId("accenture-northwestern-eval", rubricJudge("claude2"), "subscription-management-1")').length <= 80, 'Firestore rule allows ids up to 80 characters');
 });
 
 test('the comparison export puts every evaluator side by side per criterion', async () => {

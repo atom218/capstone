@@ -178,10 +178,15 @@ const RUBRIC_JUDGES = [
   { id: "gpt2", key: "llm:gpt-6.1-sol:rubric2", name: "GPT-6.1 (new rubric)", short: "GPT new", provider: "openai-responses", model: "gpt-6.1-sol", shard: "judge-gpt-rubric2" },
 ];
 const SHARD_LANES = Object.fromEntries(RUBRIC_JUDGES.map((j) => [j.key, j.shard]));
-/* A judge's lane is split over SHARD_PARTS documents (about 6 KB per answer), keeping each well under 1 MiB. */
+/* A judge's lane is split by product, then over SHARD_PARTS documents per product (about 6 KB per answer),
+   so every answer of a product can be judged while each document stays well under 1 MiB. */
 const SHARD_PARTS = 2;
-function shardPartOf(itemIdStr) { return parseInt(hash(`part:${itemIdStr}`), 36) % SHARD_PARTS; }
-function shardDocId(workspaceId, judge, part) { return `${workspaceId}--${judge.shard}-p${part}`; }
+function shardPartOf(itemIdStr) {
+  const it = itemContext(itemIdStr);
+  return `${it ? it.run.cfg.product : "other"}-${parseInt(hash(`part:${itemIdStr}`), 36) % SHARD_PARTS}`;
+}
+function shardPartIds() { return [...PRODUCTS.map((p) => p.id), "other"].flatMap((pid) => Array.from({ length: SHARD_PARTS }, (_, n) => `${pid}-${n}`)); }
+function shardDocId(workspaceId, judge, part) { return `${workspaceId}--${judge.shard}-${part}`; }
 const PREVIOUS_JUDGE_KEY = "llm:claude-opus-5-5-fast";
 const EVALUATORS = [
   { id: "human", name: "Human", short: "Human", desc: "Team reviewers" },
@@ -475,7 +480,7 @@ const CloudSync = {
       }, (err) => {
         this.setStatus("error", String((err && err.message) || err || "Failed to subscribe"));
       });
-      this.shardUnsubs = RUBRIC_JUDGES.flatMap((j) => Array.from({ length: SHARD_PARTS }, (_, p) => this.shardRef(j, p).onSnapshot((snap) => {
+      this.shardUnsubs = RUBRIC_JUDGES.flatMap((j) => shardPartIds().map((p) => this.shardRef(j, p).onSnapshot((snap) => {
         if (!snap.exists) return;
         const remote = (((snap.data() || {}).payload || {}).reviews || {})[j.key] || {};
         this.shardSeen[`${j.key}#${p}`] = stableJson(remote);
@@ -493,7 +498,7 @@ const CloudSync = {
   /* Rubric judge lanes live in their own documents; write a part only when it differs from what the cloud last sent. */
   async pushShards() {
     for (const j of RUBRIC_JUDGES) {
-      for (let p = 0; p < SHARD_PARTS; p++) {
+      for (const p of shardPartIds()) {
         const local = Object.fromEntries(Object.entries(STORE.reviews[j.key] || {}).filter(([id]) => shardPartOf(id) === p));
         const seenKey = `${j.key}#${p}`;
         if (!Object.keys(local).length || stableJson(local) === this.shardSeen[seenKey]) continue;
