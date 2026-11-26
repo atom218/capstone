@@ -261,12 +261,21 @@ short-persona runs S7 and S8.
 - `build_studio.py` merges `expanded_runs.json` into the page when the file
   exists. Sessions from the v3 dashboard win on any id clash.
 
-New session ids follow the existing pattern:
+New session ids follow the existing pattern. Filomena Nguyen keeps the original
+ids. Each additional person prefixes that id with a slug, for example
+`steven_C3_sexual_fine_short_behavioral`.
 
 - `B_<product>_text_only_<persona>` for baselines, for example
   `B_cashflow_text_only_full`;
 - `C<n>_<product>_<arm>_<persona>` for grounded runs, for example
   `C3_sexual_fine_short_behavioral`.
+
+`persona_library.json` holds Filomena plus four more adults from
+`persona_standard_dataset_v3.csv` on the team Drive. The dashboard lists them
+in Design, Interviews, Evaluate, and Compare. Only Filomena has answers.
+`python3 run_missing_sessions.py --dry-run` prints the matrix and does not call
+a model. `python3 run_missing_sessions.py --person new` is the command that
+generates the four new people when you choose to run it.
 
 ```
 cd v3_conversation_loop_evaluation/expanded_runs

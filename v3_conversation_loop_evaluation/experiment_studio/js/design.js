@@ -118,11 +118,19 @@ const Design = {
       }).join("")}</div>`;
     }
     if (d.step === "audience") {
-      return head("Saved personas", "Saved personas come from the team's standard persona dataset.") + `<div class="tray-list">${PERSONAS.map((p) => `
-        <div class="block${d.persona === p.id ? " placed" : ""}" data-drag="persona" data-value="${esc(p.id)}" data-default-drop="audience" tabindex="0">
+      const groups = catalogPeople().map((person) => {
+        const cov = personaCoverage(person.id);
+        const cards = PERSONAS.filter((p) => p.person === person.id).map((p) => {
+          const ready = personaHasBaseline(p.id);
+          return `<div class="block${d.persona === p.id ? " placed" : ""}" data-drag="persona" data-value="${esc(p.id)}" data-default-drop="audience" tabindex="0">
           <div class="b-title">${esc(p.name)}</div><div class="b-sub">${esc(p.variant)}. ${esc(p.note)}.</div>
-          <div class="b-meta"><span class="chip">${wordsOf(DATA.persona_texts[p.id])} words</span>${p.id === "full_description" ? '<span class="chip ok">Has a matched baseline</span>' : '<span class="chip warn">No saved baseline</span>'}</div>
-        </div>`).join("")}</div>
+          <div class="b-meta"><span class="chip">${wordsOf(DATA.persona_texts[p.id])} words</span>${ready ? '<span class="chip ok">Saved interviews</span>' : '<span class="chip">Not generated yet</span>'}</div>
+        </div>`;
+        }).join("");
+        const status = cov.pending === 0 ? `${cov.saved} interviews saved` : `${cov.saved}/${cov.expected} interviews saved`;
+        return `<div class="persona-group"><div class="small" style="margin:10px 0 4px"><b>${esc(person.name)}</b> <span class="faint">${esc(person.role || "")}</span></div><div class="tiny faint" style="margin-bottom:6px">${esc(status)}</div>${cards}</div>`;
+      }).join("");
+      return head("Saved personas", "Five people from the team's standard persona dataset. Filomena Nguyen already has the full interview matrix. The other four are ready to generate and are not generated yet.") + `<div class="tray-list">${groups}</div>
         <div style="margin-top:16px">${head("New audience", "Describe the audience in plain language.")}
           <textarea class="note-in" rows="3" data-bind="brief" placeholder="For example: renters in their thirties who share streaming accounts with roommates">${esc(d.brief)}</textarea>
           <div class="row" style="margin-top:8px"><button class="btn sm" data-action="find-seeds">Find candidate seeds</button></div>

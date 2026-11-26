@@ -1,0 +1,92 @@
+{
+  "source": "Northwestern x Accenture/Dataset/persona_standard_dataset_v3.csv",
+  "license": "NVIDIA Nemotron-Personas, CC BY 4.0",
+  "selection": "Filomena Nguyen is the persona already interviewed. Four more adults were taken from the same 30-person standard dataset so the next runs differ in age, job, and region. Three children in that file (ages 7, 8, and 11) are not included, because the products cover cash planning and sexual health. The other adults remain in the Drive file and are not part of this matrix.",
+  "variants": [
+    {
+      "id": "full_description",
+      "code": "full",
+      "label": "Full biography",
+      "note": "Age, location, background, hobbies and goals"
+    },
+    {
+      "id": "short_version_1",
+      "code": "short_demographics",
+      "label": "Short bio with demographics",
+      "note": "Concise, keeps age and location"
+    },
+    {
+      "id": "short_version_2",
+      "code": "short_behavioral",
+      "label": "Work and habits only",
+      "note": "No age, gender or location"
+    }
+  ],
+  "people": [
+    {
+      "slug": "filomena",
+      "uuid": "0ee14f548c2c48c99b6ed3d8369e194b",
+      "name": "Filomena Nguyen",
+      "role": "30-year-old operations manager in Parsons, West Virginia",
+      "active": true,
+      "legacy_keys": true,
+      "texts": {
+        "full_description": "Filomena Nguyen, a 30-year-old operations manager from Parsons, West Virginia, blends a data-driven mindset with a flexible planning style in her work overseeing resource allocation, staff scheduling, and supply-chain coordination. Raised in a mixed-heritage household with Appalachian and Vietnamese roots, she values self-reliance, community ties, and craftsmanship. Filomena enjoys hiking the Allegheny Mountains, capturing seasonal changes through photography, and experimenting with fusion cooking that combines Appalachian and Vietnamese flavors. She practices yoga to manage stress, reads contemporary science fiction and self-help books, and participates in local board-game nights. Filomena aspires to become a regional operations director, focusing on sustainable practices and advanced analytics, and eventually hopes to establish a consulting firm to modernize Appalachian businesses while preserving their community values.",
+        "short_version_1": "Filomena Nguyen, a 30-year-old operations manager from West Virginia, balances a data-driven career with hobbies like hiking, photography, and fusion cooking. Raised in a mixed Appalachian and Vietnamese household, she values community and innovation. Filomena aims to advance her career in sustainable operations and eventually start a consulting firm.",
+        "short_version_2": "Filomena Nguyen is an operations manager who oversees resource allocation and supply-chain coordination. She enjoys hiking, photography, and fusion cooking, blending Appalachian and Vietnamese influences. Filomena aspires to advance her career in sustainable practices and analytics, with a long-term goal of starting a consulting firm."
+      }
+    },
+    {
+      "slug": "steven",
+      "uuid": "fc80b6482bd942fa833a1f6b41960279",
+      "name": "Steven Mendez",
+      "role": "34-year-old customer service representative in Orange Park, Florida",
+      "active": true,
+      "legacy_keys": false,
+      "texts": {
+        "full_description": "Steven Mendez, a 34-year-old customer service representative from Orange Park, Florida, is known for his competitive drive and outgoing personality. Professionally, he excels in de-escalating customer concerns and aims to transition into a supervisory role within two years, with aspirations of eventually becoming a customer success or operations manager. Raised in a multicultural community, Steven values diversity and community involvement, which has shaped his flexible and curious outlook on life. Outside of work, he enjoys social and energetic activities such as pickup basketball, beach volleyball, karaoke, and community trivia contests. He also has a passion for technology, often tinkering with DIY computer builds and exploring new gadgets. Steven balances his active social life with moments of personal exploration, including spontaneous road trips along Florida’s coast and fishing. His love for competition extends to multiplayer video gaming and strategic board games, reflecting his dynamic and well-rounded personality.",
+        "short_version_1": "Steven Mendez, a 34-year-old customer service representative from Orange Park, Florida, combines a competitive career drive with a love for social activities like basketball, karaoke, and trivia. He aims to advance into a supervisory role while enjoying hobbies such as tech tinkering, road trips, and fishing, reflecting his outgoing and curious nature.",
+        "short_version_2": "Steven Mendez is a customer service representative with aspirations of moving into a supervisory role. Outside of work, he enjoys social activities like basketball, karaoke, and trivia, as well as tech tinkering and spontaneous road trips. His dynamic personality blends a competitive drive with a love for exploration and community engagement."
+      }
+    },
+    {
+      "slug": "victoria",
+      "uuid": "14cb59696b3543ccb1341270027838dd",
+      "name": "Victoria Oliver",
+      "role": "44-year-old computer systems analyst in Springvale, Maine",
+      "active": true,
+      "legacy_keys": false,
+      "texts": {
+        "full_description": "Victoria Oliver, a 44-year-old computer systems analyst from Springvale, Maine, blends technical expertise with a passion for the arts. Professionally, she specializes in business process modeling, data analysis, and human-centered design, with aspirations to become a lead analyst or solution architect. Her career goals include steering digital transformation projects in the cultural sector and mentoring women in tech. Outside of work, Victoria enjoys kayaking, hiking, and sketching watercolor studies of Maine’s coastline. She is an active member of her community, volunteering with the local historical society and participating in art workshops. A lover of contemporary fiction, philosophy, and art history, she also attends regional theater performances and explores her culinary interests through farm-to-table cooking. Her upbringing in a small New England town, steeped in maritime heritage and community traditions, has shaped her values of self-reliance, lifelong learning, and creativity.",
+        "short_version_1": "Victoria Oliver, a 44-year-old computer systems analyst from Springvale, Maine, combines technical expertise with a love for the arts. She enjoys kayaking, hiking, watercolor painting, and farm-to-table cooking. Professionally, she aims to lead digital transformation projects in the cultural sector and mentor women in tech.",
+        "short_version_2": "Victoria Oliver is a computer systems analyst who integrates technical expertise with creative pursuits. She specializes in human-centered design and aims to lead digital transformation projects in the cultural sector. Outside work, she enjoys kayaking, hiking, watercolor painting, and volunteering with her local historical society."
+      }
+    },
+    {
+      "slug": "amelia",
+      "uuid": "dcd136222c57444ebdbe579c618b6959",
+      "name": "Amelia Gentry",
+      "role": "57-year-old transit bus operator in Spokane, Washington",
+      "active": true,
+      "legacy_keys": false,
+      "texts": {
+        "full_description": "Amelia Gentry, a 57-year-old transit bus operator in Spokane, Washington, is known for her meticulous route planning, mechanical troubleshooting, and compassionate communication. With a career spanning decades, she mentors new drivers and aspires to transition into a leadership role within the Spokane Transit Authority. Amelia’s structured approach extends to her personal life, where she enjoys gardening, knitting, and solving puzzles. She is an active member of her community, participating in volunteer projects and a historical nonfiction book club. A lover of the outdoors, she frequently hikes the Spokane River Trail and supports local sports teams like the Spokane Chiefs and Seattle Seahawks. Amelia also has a passion for travel, favoring well-planned road trips to historic sites. Her European-American heritage and upbringing in the Pacific Northwest have instilled values of hard work, practicality, and public service, which she carries into her professional and personal endeavors.",
+        "short_version_1": "Amelia Gentry, 57, is a veteran transit bus operator in Spokane, Washington. She values structure and reliability, both in her work and personal life. Amelia enjoys gardening, hiking, knitting, and solving puzzles. She is active in her community, participates in a book club, and aspires to take on a leadership role in transit operations.",
+        "short_version_2": "Amelia Gentry is a transit bus operator in Spokane who values structure and reliability. She enjoys gardening, hiking, knitting, and solving puzzles. Active in her community, she participates in volunteer projects and a book club. Amelia aspires to transition into a leadership role within the Spokane Transit Authority."
+      }
+    },
+    {
+      "slug": "carolina",
+      "uuid": "c98351ea7a634c86b4efce9e5ea9ba4e",
+      "name": "Carolina Weatherspoon",
+      "role": "22-year-old construction apprentice in Springfield, Massachusetts",
+      "active": true,
+      "legacy_keys": false,
+      "texts": {
+        "full_description": "Carolina Weatherspoon, a 22-year-old construction apprentice from Springfield, MA, combines hands-on carpentry and concrete work with a passion for art and design. Growing up in a diverse, working-class African-American community, she developed a deep appreciation for resilience, music, and visual arts, which now influence her professional and personal life. Carolina is pursuing a journeyman carpenter certification and aspires to become a site supervisor, blending technical expertise with creative instincts. She enjoys exploring art galleries, sketching mural concepts, playing pickup basketball, and hiking. Her culinary experiments and DIY home improvement projects reflect her innovative spirit. Carolina is also committed to mentoring young Black women in skilled trades, aiming to foster inclusivity in her industry. Her cultural identity and love for urban art inspire her vision of creating culturally resonant, sustainable spaces through her future renovation business.",
+        "short_version_1": "Carolina Weatherspoon, a 22-year-old construction apprentice from Springfield, MA, blends technical carpentry skills with a passion for art and design. She enjoys basketball, hiking, cooking, and exploring galleries. Carolina aspires to become a site supervisor and mentor young Black women in skilled trades, promoting inclusivity in her industry.",
+        "short_version_2": "Carolina Weatherspoon is a construction apprentice who combines technical expertise with a passion for art and design. She enjoys basketball, hiking, cooking, and exploring galleries. Carolina aims to become a site supervisor and mentor others, fostering inclusivity and creativity in the skilled trades."
+      }
+    }
+  ]
+}

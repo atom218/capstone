@@ -357,6 +357,7 @@ const Evaluate = {
           ${other.length ? `<div class="row wrap" style="margin-top:8px">${other.map((s) => `<button class="chip wrapchip" data-action="scope" data-study="${esc(s.id)}" aria-pressed="${on(s.id)}">${esc(s.name)}</button>`).join("")}</div>` : ""}
         </div>`;
       }).join("")}
+      ${(() => { const waiting = catalogPeople().filter((p) => { const c = personaCoverage(p.id); return c.pending > 0 && c.saved === 0; }); return waiting.length ? `<div class="note" style="margin-top:12px"><b>${waiting.map((p) => esc(p.name)).join(", ")}</b> are set up for the same 108-interview matrix. They stay out of this queue until those interviews are generated. Nothing here calls the model.</div>` : ""; })()}
     </section>`;
   },
 

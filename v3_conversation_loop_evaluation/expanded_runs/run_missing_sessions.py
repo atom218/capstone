@@ -6,8 +6,9 @@ settings as the saved V3 runs. Sessions that already exist in the V3 dashboard d
 expanded_runs.json are skipped, so the script can be stopped and resumed.
 
     cd v3_conversation_loop_evaluation/expanded_runs
-    /opt/miniconda3/bin/python run_missing_sessions.py            # everything missing
-    /opt/miniconda3/bin/python run_missing_sessions.py --limit 1  # smoke test
+    python3 run_missing_sessions.py --dry-run
+    python3 run_missing_sessions.py --person new --dry-run
+    python3 run_missing_sessions.py --person steven   # generates only when you mean to
 
 Inputs (git-ignored, fetched from the team Drive):
     inputs/product_supplier.py and inputs/product_inputs/ (from product_interview_inputs.zip)
@@ -38,17 +39,22 @@ REPO = V3.parent
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(HERE / "inputs"))
 
-from personas.conversation_loop import (  # noqa: E402
-    GroundingMetrics,
-    Session,
-    build_card,
-    build_messages,
-    estimate_tokens,
-    first_sentence,
-    parse_structured_output,
-    update_session_state,
-)
-import product_supplier as ps  # noqa: E402
+from persona_matrix import coverage, load_library, missing_specs, persona_key  # noqa: E402
+
+
+def ensure_loop():
+    """Import the prompt builder only when a generation run is actually starting."""
+    global GroundingMetrics, Session, build_card, build_messages, estimate_tokens, first_sentence, parse_structured_output, update_session_state
+    from personas.conversation_loop import (  # noqa: WPS442
+        GroundingMetrics,
+        Session,
+        build_card,
+        build_messages,
+        estimate_tokens,
+        first_sentence,
+        parse_structured_output,
+        update_session_state,
+    )
 
 OUT_JSON = HERE / "expanded_runs.json"
 OUT_CSV = HERE / "expanded_runs.csv"
@@ -58,10 +64,6 @@ KEY_NOTEBOOK = "gdrive:Northwestern x Accenture/Dataset/CMU-MOSEI/poc_grounded_i
 PRODUCTS = ["subscription-management", "mental-wellness", "cash-flow-planning", "sexual-health"]
 PRODUCT_CODE = {"subscription-management": "sub", "mental-wellness": "wellness",
                 "cash-flow-planning": "cashflow", "sexual-health": "sexual"}
-PERSONAS = ["full_description", "short_version_1", "short_version_2"]
-PERSONA_CODE = {"full_description": "full", "short_version_1": "short_demographics",
-                "short_version_2": "short_behavioral"}
-PERSONA_UUID = "0ee14f548c2c48c99b6ed3d8369e194b"
 NEUTRAL = "patience: medium; trust: medium; mood: neutral"
 TEMPERATURE = 0.7
 TOP_P = 0.9
@@ -172,23 +174,29 @@ def product_entry(iv):
     return {"product_id": iv["product_id"], "product_name": iv["product_name"], "questions": qs}
 
 
-def plan_sessions(data):
-    cycles = data["cycles"]
-    by_video = {c["video_id"]: cid for cid, c in cycles.items()}
-    have = set()
-    for s in data["sessions"].values():
-        have.add((s["product_id"], s["persona_variant"], s["arm"], by_video.get(s["video_id"])))
-    specs = []
-    for prod in PRODUCTS:
-        for persona in PERSONAS:
-            combos = [("text_only", None)] + [(arm, cid) for cid in sorted(cycles) for arm in ("coarse", "fine")]
-            for arm, cid in combos:
-                if (prod, persona, arm, cid) in have:
-                    continue
-                pc, rc = PRODUCT_CODE[prod], PERSONA_CODE[persona]
-                sid = f"B_{pc}_text_only_{rc}" if arm == "text_only" else f"{cid}_{pc}_{arm}_{rc}"
-                specs.append({"session_id": sid, "product_id": prod, "persona_variant": persona, "arm": arm, "cycle": cid})
-    return specs
+def combined_sessions(data):
+    """Dashboard sessions plus anything already written to expanded_runs.json."""
+    sessions = dict(data["sessions"])
+    if OUT_JSON.exists():
+        extra = json.loads(OUT_JSON.read_text(encoding="utf-8"))
+        for key, session in extra.get("sessions", {}).items():
+            sessions.setdefault(key, session)
+    return sessions
+
+
+def selected_slugs(arg, library):
+    """Empty means the original Filomena catch-up only. New people are opt-in."""
+    if not arg:
+        return {"filomena"}
+    wanted = {part.strip() for part in arg.split(",") if part.strip()}
+    if wanted & {"new", "all-new"}:
+        wanted |= {p["slug"] for p in library["people"] if p.get("active") and not p.get("legacy_keys")}
+        wanted -= {"new", "all-new"}
+    known = {p["slug"] for p in library["people"] if p.get("active")}
+    unknown = wanted - known
+    if unknown:
+        sys.exit("Unknown persona slug: " + ", ".join(sorted(unknown)))
+    return wanted
 
 
 def run_session(spec, data, interviews, conn):
@@ -199,7 +207,7 @@ def run_session(spec, data, interviews, conn):
     card = build_card(data["persona_texts"][spec["persona_variant"]], cyc["rules"][arm] if cyc else [])
     sess = Session(
         session_id=spec["session_id"], product_id=spec["product_id"], product_name=iv["product_name"],
-        persona_uuid=PERSONA_UUID, persona_name="Filomena Nguyen", persona_variant=spec["persona_variant"],
+        persona_uuid=spec["persona_uuid"], persona_name=spec["persona_name"], persona_variant=spec["persona_variant"],
         arm=arm, journey_label=cyc["label"] if cyc else "None (Text-only baseline)",
         video_id=cyc["video_id"] if cyc else "none", card=card,
         state=grounding.initial_state if grounding else NEUTRAL,
@@ -229,7 +237,9 @@ def run_session(spec, data, interviews, conn):
         })
     return {
         "session_id": spec["session_id"], "product_id": spec["product_id"], "product_name": iv["product_name"],
-        "persona_variant": spec["persona_variant"], "arm": arm, "video_id": sess.video_id, "system_card": card,
+        "persona_variant": spec["persona_variant"], "persona_uuid": spec["persona_uuid"],
+        "persona_name": spec["persona_name"], "person": spec["person"],
+        "arm": arm, "video_id": sess.video_id, "system_card": card,
         "turns": turns,
         "model": {"deployment": conn["deployment"], "api_version": conn["api_version"],
                   "temperature": TEMPERATURE, "top_p": TOP_P, "max_tokens": MAX_TOKENS, "keep": KEEP},
@@ -248,7 +258,7 @@ def write_outputs(out):
             for t in s["turns"]:
                 w.writerow({
                     **{k: s[k] for k in ("session_id", "product_id", "product_name", "persona_variant", "arm", "video_id", "system_card")},
-                    "persona_uuid": PERSONA_UUID, "persona_name": "Filomena Nguyen",
+                    "persona_uuid": s.get("persona_uuid", ""), "persona_name": s.get("persona_name", ""),
                     **{k: t[k] for k in ("turn", "question_id", "phase", "has_screenshot", "screenshot_path", "question",
                                          "state_before", "think", "reply", "model_raw_state", "state_after",
                                          "reply_words", "assembled_user_block")},
@@ -261,24 +271,43 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="run at most this many sessions")
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--only", default="", help="comma-separated session ids to run")
+    ap.add_argument("--person", default="", help="persona slugs to generate, or 'new' for the four ungenerated people. Default: Filomena only.")
+    ap.add_argument("--dry-run", action="store_true", help="print the matrix and exit without calling a model")
     args = ap.parse_args()
 
     data = load_v3_data()
-    interviews = {p: ps.get_product_interview(p, root=HERE / "inputs" / "product_inputs", image_mode="data_uri") for p in PRODUCTS}
-    out = json.loads(OUT_JSON.read_text(encoding="utf-8")) if OUT_JSON.exists() else {"sessions": {}, "products": {}}
-    for p in PRODUCTS:
-        if p not in data["products"] and p not in out["products"]:
-            out["products"][p] = product_entry(interviews[p])
-
-    specs = [s for s in plan_sessions(data) if s["session_id"] not in out["sessions"]]
+    library = load_library()
+    for person in library["people"]:
+        if not person.get("active"):
+            continue
+        for variant_id, text in person["texts"].items():
+            data["persona_texts"].setdefault(persona_key(person, variant_id), text.strip())
+    rows = coverage(library, data["cycles"], combined_sessions(data))
+    for row in rows:
+        print(f"{row['name']}: {row['saved']}/{row['expected']} saved, {row['pending']} not generated", flush=True)
+    chosen = selected_slugs(args.person, library)
+    specs = [s for s in missing_specs(library, data["cycles"], combined_sessions(data)) if s["person"] in chosen]
     if args.only:
         wanted = set(args.only.split(","))
         specs = [s for s in specs if s["session_id"] in wanted]
     if args.limit:
         specs = specs[: args.limit]
-    print(f"{len(out['sessions'])} already generated, {len(specs)} to run", flush=True)
-    write_outputs(out)
+    print(f"{len(specs)} selected to run ({', '.join(sorted(chosen)) or 'none'})", flush=True)
+    if args.dry_run or not specs:
+        print("No model calls.", flush=True)
+        return
+
+    ensure_loop()
+    import product_supplier as ps
+    interviews = {p: ps.get_product_interview(p, root=HERE / "inputs" / "product_inputs", image_mode="data_uri") for p in PRODUCTS}
+    out = json.loads(OUT_JSON.read_text(encoding="utf-8")) if OUT_JSON.exists() else {"sessions": {}, "products": {}}
+    for p in PRODUCTS:
+        if p not in data["products"] and p not in out["products"]:
+            out["products"][p] = product_entry(interviews[p])
+    specs = [s for s in specs if s["session_id"] not in out["sessions"]]
+    print(f"{len(out['sessions'])} already in expanded_runs.json, {len(specs)} to run", flush=True)
     if not specs:
+        print("No model calls.", flush=True)
         return
 
     conn = load_connection(data["azure_default"])

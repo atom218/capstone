@@ -33,9 +33,12 @@ The longer original plan is in [`docs/project-plan.md`](docs/project-plan.md).
 - **Model.** Azure OpenAI `gpt-4o` (API version `2024-12-01-preview`). Endpoint defaults
   are in `v3_conversation_loop_evaluation/experiment_studio/.env.example`. The API key is
   never committed.
-- **Persona.** Filomena Nguyen, a 30-year-old operations manager from Parsons, West
-  Virginia, from the NVIDIA Nemotron-Personas library (uuid
-  `0ee14f548c2c48c99b6ed3d8369e194b`), in three biography lengths.
+- **Personas.** The saved interviews are Filomena Nguyen, a 30-year-old operations
+  manager from Parsons, West Virginia, from the NVIDIA Nemotron-Personas library
+  (uuid `0ee14f548c2c48c99b6ed3d8369e194b`), in three biography lengths. Four more
+  adults from the same standard dataset are configured in Experiment Studio with
+  that same matrix and have no generated answers yet: Steven Mendez, Victoria
+  Oliver, Amelia Gentry, and Carolina Weatherspoon.
 - **Products tested.** Four products with 7 interview questions each. Three of each
   product's questions show a screenshot.
   - *Subscription Manager*, a banking app feature.
@@ -303,10 +306,25 @@ into 7 stages, one per interview question.
 
 ## Personas and products
 
-- **Persona variants** (Wenjun, `persona_standard_dataset_v3.csv` on the team Drive):
+- **Persona variants** (Wenjun, `persona_standard_dataset_v3.csv` on the team Drive,
+  30 people). Each person has three biography lengths:
   - `full_description`: 100–150 words with age, location, background, hobbies and goals.
   - `short_version_1`: 40–60 words, keeps demographics.
   - `short_version_2`: 35–55 words, work and habits only, with no age, gender or location.
+- **Who is in the dashboard.** Filomena Nguyen is the only persona with saved
+  interviews. Steven Mendez (customer service, Florida), Victoria Oliver (systems
+  analyst, Maine), Amelia Gentry (transit operator, Washington), and Carolina
+  Weatherspoon (construction apprentice, Massachusetts) are loaded from that same
+  file, with the same 108-interview matrix ready to generate. Children in the
+  source file are not included. Their texts live in
+  `v3_conversation_loop_evaluation/expanded_runs/persona_library.json`. Generating
+  them is a separate step and does not run on its own:
+
+  ```sh
+  cd v3_conversation_loop_evaluation/expanded_runs
+  python3 run_missing_sessions.py --dry-run
+  python3 run_missing_sessions.py --person new
+  ```
 - **Product packs** (Prakhar's `Product_Interview_Supplier.ipynb`):
   - `subscription-management`, the Subscription Manager in a banking app. Screens appear on
     questions 3, 5 and 6.

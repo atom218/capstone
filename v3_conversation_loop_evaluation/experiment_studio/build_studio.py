@@ -12,11 +12,14 @@ studio's CSS and JavaScript. Nothing in the v3 folder is modified.
 
 import json
 import os
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent / "conversation-loop-evaluation-dashboard.html"
 EXPANDED = HERE.parent / "expanded_runs" / "expanded_runs.json"
+sys.path.insert(0, str(HERE.parent / "expanded_runs"))
+from persona_matrix import apply_to_studio_data  # noqa: E402
 OUT = HERE / "experiment-studio.html"
 JS_ORDER = ["judge_rubric.js", "core.js", "judge2.js", "design.js", "interviews.js", "evaluate.js", "compare.js", "app.js"]
 KEEP = ["persona_texts", "format_block", "cycles", "products", "sessions", "azure_default", "insights"]
@@ -32,6 +35,7 @@ def load_v3_data():
         extra = json.loads(EXPANDED.read_text(encoding="utf-8"))
         for key in ("products", "sessions"):
             data[key] = {**extra.get(key, {}), **data[key]}
+    apply_to_studio_data(data)
     return data
 
 

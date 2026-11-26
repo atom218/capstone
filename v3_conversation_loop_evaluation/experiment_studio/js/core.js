@@ -52,11 +52,47 @@ const PRODUCTS = [
     ],
   },
 ];
-const PERSONAS = [
-  { id: "full_description", name: "Filomena Nguyen", variant: "Full biography", note: "Age, location, background, hobbies and goals" },
-  { id: "short_version_1", name: "Filomena Nguyen", variant: "Short bio with demographics", note: "Concise, keeps age and location" },
-  { id: "short_version_2", name: "Filomena Nguyen", variant: "Work and habits only", note: "No age, gender or location" },
+const PERSONAS = (DATA.persona_library && DATA.persona_library.entries) || [
+  { id: "full_description", person: "filomena", name: "Filomena Nguyen", uuid: "0ee14f548c2c48c99b6ed3d8369e194b", role: "30-year-old operations manager in Parsons, West Virginia", variant: "Full biography", variantId: "full_description", note: "Age, location, background, hobbies and goals" },
+  { id: "short_version_1", person: "filomena", name: "Filomena Nguyen", uuid: "0ee14f548c2c48c99b6ed3d8369e194b", role: "30-year-old operations manager in Parsons, West Virginia", variant: "Short bio with demographics", variantId: "short_version_1", note: "Concise, keeps age and location" },
+  { id: "short_version_2", person: "filomena", name: "Filomena Nguyen", uuid: "0ee14f548c2c48c99b6ed3d8369e194b", role: "30-year-old operations manager in Parsons, West Virginia", variant: "Work and habits only", variantId: "short_version_2", note: "No age, gender or location" },
 ];
+function personaById(id) {
+  return PERSONAS.find((p) => p.id === id) || { id, person: "", name: id, variant: id, variantId: id, note: "", role: "" };
+}
+function catalogPeople() {
+  const out = [];
+  PERSONAS.forEach((p) => { if (!out.some((x) => x.id === p.person)) out.push({ id: p.person, name: p.name, role: p.role }); });
+  return out;
+}
+function runsForPersona(personId) {
+  const ids = new Set(PERSONAS.filter((p) => p.person === personId).map((p) => p.id));
+  return Object.values(allRuns()).filter((r) => ids.has(r.cfg.persona));
+}
+function personaCoverage(personId) {
+  const expected = (DATA.persona_library && DATA.persona_library.matrix && DATA.persona_library.matrix.interviews_per_person) || 108;
+  const saved = runsForPersona(personId).filter((r) => (r.turns || []).some((t) => t.status === "done" && t.reply)).length;
+  return { saved, expected, pending: Math.max(0, expected - saved) };
+}
+function personaHasBaseline(personaId) {
+  return Object.values(allRuns()).some((r) => r.cfg.persona === personaId && r.cfg.arm === "baseline" && (r.turns || []).some((t) => t.status === "done" && t.reply));
+}
+function personaPendingNote(personId) {
+  const person = catalogPeople().find((p) => p.id === personId);
+  const cov = personaCoverage(personId);
+  if (!person || cov.pending === 0) return "";
+  const m = (DATA.persona_library && DATA.persona_library.matrix) || {};
+  const generated = cov.saved ? `${cov.saved} already saved. ` : "";
+  return `<div class="note" style="margin-top:12px"><b>${esc(person.name)}</b> uses the same interview matrix as the saved runs: ${m.products || 4} products, ${m.variants || 3} biography lengths, and ${m.conditions || 9} conditions (${cov.expected} interviews, ${m.answers_per_person || 756} answers). ${generated}${cov.pending} ${cov.pending === 1 ? "interview is" : "interviews are"} configured and not generated yet. Nothing here calls the model.</div>`;
+}
+function studyDisplayName(g) {
+  const p = personaById(g.cfg.persona);
+  const cyc = DATA.cycles[g.cfg.journey];
+  const bits = [productOf(g.cfg.product).short, cyc.short_title.replace(/^Cycle \d: /, ""), DETAIL[g.cfg.detail].name.toLowerCase()];
+  if (!(p.person === "filomena" && (p.variantId || p.id) === "full_description")) bits.push(p.variant.toLowerCase());
+  if (p.person && p.person !== "filomena") bits.unshift(p.name);
+  return bits.join(" · ");
+}
 const DETAIL = {
   brief: { name: "Brief cue", sub: "Two or three general behavior rules from the journey's averages." },
   detailed: { name: "Detailed cue", sub: "Adds conditional rules: friction drops, recovery, pacing and dominant emotions." },
@@ -703,10 +739,9 @@ const SAVED_STUDIES = {};
   const baselines = Object.values(SAVED_RUNS).filter((r) => r.cfg.arm === "baseline");
   Object.values(SAVED_RUNS).filter((r) => r.cfg.arm === "grounded").forEach((g) => {
     const b = baselines.find((x) => sharedKey(x.cfg) === sharedKey(g.cfg));
-    const cyc = DATA.cycles[g.cfg.journey];
     const id = "study_" + g.id;
     SAVED_STUDIES[id] = {
-      id, origin: "saved", name: `${productOf(g.cfg.product).short} · ${cyc.short_title.replace(/^Cycle \d: /, "")} · ${DETAIL[g.cfg.detail].name.toLowerCase()}${g.cfg.persona === "full_description" ? "" : ` · ${PERSONAS.find((p) => p.id === g.cfg.persona).variant.toLowerCase()}`}`,
+      id, origin: "saved", name: studyDisplayName(g),
       product: g.cfg.product, decision: "", groundedRuns: [g.id], baselineRuns: b ? [b.id] : [], createdAt: null,
     };
   });

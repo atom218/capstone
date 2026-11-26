@@ -13,16 +13,19 @@ const BLOCKS = [
 ];
 
 function ivUi() {
-  STORE.ui.iv = STORE.ui.iv || { run: "C1_sub_fine_full", q: 3, think: true, product: "subscription-management", raw: false, card: false };
+  STORE.ui.iv = STORE.ui.iv || { run: "C1_sub_fine_full", q: 3, think: true, product: "subscription-management", person: "filomena", raw: false, card: false };
   const u = STORE.ui.iv;
-  if (!runById(u.run)) u.run = "C1_sub_fine_full";
+  if (!catalogPeople().some((p) => p.id === u.person)) u.person = "filomena";
+  if (!PRODUCTS.some((p) => p.id === u.product && !p.missing)) u.product = "subscription-management";
+  const runs = runsForProduct(u.product, u.person);
+  const current = runById(u.run);
+  if (!current || current.cfg.product !== u.product || personaById(current.cfg.persona).person !== u.person) u.run = runs[0] ? runs[0].id : "";
   if (!(Number.isInteger(u.q) && u.q >= 0 && u.q <= 6)) u.q = 0;
-  u.product = runById(u.run).cfg.product;
   return u;
 }
-function runsForProduct(pid) {
+function runsForProduct(pid, personId) {
   const order = (r) => (r.cfg.arm === "baseline" ? "0" : "1" + (r.cfg.journey || "") + (r.cfg.detail === "brief" ? "a" : "b") + r.cfg.persona);
-  return Object.values(allRuns()).filter((r) => r.cfg.product === pid).sort((a, b) => (a.origin === b.origin ? order(a).localeCompare(order(b)) : a.origin === "saved" ? -1 : 1));
+  return Object.values(allRuns()).filter((r) => r.cfg.product === pid && (!personId || personaById(r.cfg.persona).person === personId)).sort((a, b) => (a.origin === b.origin ? order(a).localeCompare(order(b)) : a.origin === "saved" ? -1 : 1));
 }
 function runShortTitle(r) {
   if (r.cfg.arm === "baseline") return "Baseline, no journey";
@@ -31,7 +34,9 @@ function runShortTitle(r) {
 function runTag(r) {
   const parts = [];
   if (r.cfg.arm === "grounded") parts.push(DETAIL[r.cfg.detail].name);
-  if (r.cfg.persona !== "full_description") parts.push(PERSONAS.find((p) => p.id === r.cfg.persona).variant);
+  const persona = personaById(r.cfg.persona);
+  if (persona.person && persona.person !== "filomena") parts.push(persona.name);
+  if ((persona.variantId || persona.id) !== "full_description") parts.push(persona.variant);
   if (r.cfg.profileHash !== "seed") parts.push("Edited profile");
   if (String(r.cfg.keep) !== "2" || r.cfg.profileFreq !== "once") parts.push(HISTORY[r.cfg.keep].name);
   return parts;
@@ -54,10 +59,12 @@ const Interviews = {
   },
 
   picker(u, run) {
-    const runs = runsForProduct(u.product);
+    const runs = runsForProduct(u.product, u.person);
     return `<section class="panel panel-pad" style="margin-bottom:16px">
       <div class="spread" style="margin-bottom:10px"><div><h2>Choose an interview</h2><p class="tray-hint" style="margin:2px 0 0">Drag an interview into the viewer, or press Enter on it. Conditions are visible here, so reviewers should finish blinded scoring first.</p></div>
         <div class="seg" role="group" aria-label="Product">${PRODUCTS.filter((p) => !p.missing).map((p) => `<button data-action="iv-product" data-p="${p.id}" aria-pressed="${u.product === p.id}">${p.short}</button>`).join("")}</div></div>
+      <div class="seg" role="group" aria-label="Persona" style="margin-bottom:10px">${catalogPeople().map((p) => `<button data-action="iv-person" data-person="${esc(p.id)}" aria-pressed="${u.person === p.id}">${esc(p.name.split(" ")[0])}</button>`).join("")}</div>
+      ${personaPendingNote(u.person)}
       <div class="shelf">${runs.map((r) => {
         const cyc = r.cfg.journey ? DATA.cycles[r.cfg.journey] : null;
         const prog = runProgress(r);
@@ -113,7 +120,7 @@ const Interviews = {
         <section class="panel panel-pad">
           <h3 style="margin-bottom:8px">This interview</h3>
           <dl class="kv-grid">
-            <dt>Persona</dt><dd>${esc(PERSONAS.find((p) => p.id === run.cfg.persona).variant)} (${wordsOf(runPersonaText(run))} words)</dd>
+            <dt>Persona</dt><dd>${esc(personaById(run.cfg.persona).name)} · ${esc(personaById(run.cfg.persona).variant)} (${wordsOf(runPersonaText(run))} words)</dd>
             <dt>Journey cue</dt><dd>${run.cfg.arm === "grounded" ? `${DETAIL[run.cfg.detail].name}, ${TIMING[run.cfg.timing].name.toLowerCase()}${run.legacyArm ? ` <span class="faint">(v3 “${run.legacyArm}”)</span>` : ""}` : "None"}</dd>
             <dt>Memory</dt><dd>${HISTORY[run.cfg.keep].name}</dd>
             <dt>Avg reply</dt><dd>${Math.round(mean(run.turns.filter((x) => x.status === "done").map((x) => x.words || wordsOf(x.reply))) || 0)} words</dd>
@@ -239,7 +246,8 @@ const Interviews = {
   bind() {
     const save = () => { persist(); App.render(); };
     onDrop("ivrun", (v) => { const u = ivUi(); u.run = v; save(); });
-    App.on("iv-product", (el) => { const u = ivUi(); u.product = el.dataset.p; const first = runsForProduct(u.product).find((r) => r.cfg.arm === "grounded") || runsForProduct(u.product)[0]; if (first) u.run = first.id; save(); });
+    App.on("iv-product", (el) => { const u = ivUi(); u.product = el.dataset.p; const first = runsForProduct(u.product, u.person).find((r) => r.cfg.arm === "grounded") || runsForProduct(u.product, u.person)[0]; u.run = first ? first.id : ""; save(); });
+    App.on("iv-person", (el) => { const u = ivUi(); u.person = el.dataset.person; const first = runsForProduct(u.product, u.person).find((r) => r.cfg.arm === "grounded") || runsForProduct(u.product, u.person)[0]; u.run = first ? first.id : ""; save(); });
     App.on("iv-q", (el) => { ivUi().q = Number(el.dataset.i); save(); });
     App.on("iv-think", () => { const u = ivUi(); u.think = !u.think; save(); });
     App.on("iv-raw", () => { const u = ivUi(); u.raw = !u.raw; save(); });
