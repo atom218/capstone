@@ -148,10 +148,16 @@ test('judge lanes split deterministically across documents', () => {
   const counts = {};
   parts.forEach((p) => (counts[p] = (counts[p] || 0) + 1));
   for (const pid of ['subscription-management', 'mental-wellness', 'cash-flow-planning', 'sexual-health']) {
-    const a = counts[`${pid}-0`] || 0, b = counts[`${pid}-1`] || 0;
-    assert.ok(a + b === 945 && a > 60 && b > 60, `${pid} split ${a}/${b}`);
+    const legacy = (counts[`${pid}-0`] || 0) + (counts[`${pid}-1`] || 0);
+    const total = Object.entries(counts).filter(([k]) => k.startsWith(`${pid}-`)).reduce((n, [, c]) => n + c, 0);
+    assert.equal(legacy, 189, `${pid} original documents ${legacy}`);
+    assert.equal(total, 945, `${pid} total ${total}`);
   }
+  assert.match(s.run('shardPartOf("C1_sub_fine_full#3")'), /^subscription-management-[01]$/);
+  assert.match(s.run('shardPartOf("steven_C1_sub_fine_full#3")'), /^subscription-management-st-[01]$/);
   assert.equal(s.run('shardPartOf("C1_sub_fine_full#3")'), s.run('shardPartOf("C1_sub_fine_full#3")'));
+  const longest = s.run('shardPartIds().map((p) => shardDocId("accenture-northwestern-eval", rubricJudge("claude2"), p)).sort((a, b) => b.length - a.length)[0]');
+  assert.ok(longest.length <= 80, `Firestore id too long: ${longest}`);
   assert.match(s.run('shardPartOf("C1_cashflow_fine_full#3")'), /^cash-flow-planning-[01]$/);
   assert.ok(s.json('shardPartIds()').every((p) => /^[a-z-]+-[01]$/.test(p)));
   assert.equal(s.run('shardDocId("ws", rubricJudge("gpt2"), "sexual-health-1")'), 'ws--judge-gpt-rubric2-sexual-health-1');

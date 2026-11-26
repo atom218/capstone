@@ -1002,14 +1002,24 @@ const RUBRIC_JUDGES = [
   { id: "gpt2", key: "llm:gpt-6.1-sol:rubric2", name: "GPT-6.1 (new rubric)", short: "GPT new", provider: "openai-responses", model: "gpt-6.1-sol", shard: "judge-gpt-rubric2" },
 ];
 const SHARD_LANES = Object.fromEntries(RUBRIC_JUDGES.map((j) => [j.key, j.shard]));
-/* A judge's lane is split by product, then over SHARD_PARTS documents per product (about 6 KB per answer),
-   so every answer of a product can be judged while each document stays well under 1 MiB. */
+/* A judge's lane is split by product, then over SHARD_PARTS documents (about 6 KB per answer).
+   Filomena keeps the original product documents. Each later persona gets their own, so a
+   document stays under Firestore's 1 MiB limit and existing scores do not move. */
 const SHARD_PARTS = 2;
+const SHARD_PERSON = { steven: "st", victoria: "vi", amelia: "am", carolina: "ca" };
 function shardPartOf(itemIdStr) {
   const it = itemContext(itemIdStr);
-  return `${it ? it.run.cfg.product : "other"}-${parseInt(hash(`part:${itemIdStr}`), 36) % SHARD_PARTS}`;
+  const product = it ? it.run.cfg.product : "other";
+  const n = parseInt(hash(`part:${itemIdStr}`), 36) % SHARD_PARTS;
+  const person = it ? (personaById(it.run.cfg.persona).person || "") : "";
+  const code = SHARD_PERSON[person] || "";
+  return code ? `${product}-${code}-${n}` : `${product}-${n}`;
 }
-function shardPartIds() { return [...PRODUCTS.map((p) => p.id), "other"].flatMap((pid) => Array.from({ length: SHARD_PARTS }, (_, n) => `${pid}-${n}`)); }
+function shardPartIds() {
+  const products = [...PRODUCTS.map((p) => p.id), "other"];
+  const codes = ["", ...Object.values(SHARD_PERSON)];
+  return products.flatMap((pid) => codes.flatMap((code) => Array.from({ length: SHARD_PARTS }, (_, n) => (code ? `${pid}-${code}-${n}` : `${pid}-${n}`))));
+}
 function shardDocId(workspaceId, judge, part) { return `${workspaceId}--${judge.shard}-${part}`; }
 const PREVIOUS_JUDGE_KEY = "llm:claude-opus-5-5-fast";
 const EVALUATORS = [
