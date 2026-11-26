@@ -149,7 +149,7 @@ test('judge lanes split deterministically across documents', () => {
   parts.forEach((p) => (counts[p] = (counts[p] || 0) + 1));
   for (const pid of ['subscription-management', 'mental-wellness', 'cash-flow-planning', 'sexual-health']) {
     const a = counts[`${pid}-0`] || 0, b = counts[`${pid}-1`] || 0;
-    assert.ok(a + b === 189 && a > 60 && b > 60, `${pid} split ${a}/${b}`);
+    assert.ok(a + b === 945 && a > 60 && b > 60, `${pid} split ${a}/${b}`);
   }
   assert.equal(s.run('shardPartOf("C1_sub_fine_full#3")'), s.run('shardPartOf("C1_sub_fine_full#3")'));
   assert.match(s.run('shardPartOf("C1_cashflow_fine_full#3")'), /^cash-flow-planning-[01]$/);

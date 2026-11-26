@@ -1,12 +1,33 @@
 /* Experiment Studio · Evaluate workspace */
 "use strict";
 
+function studyGrounded(study) { return study && runById(study.groundedRuns[0]); }
+function studyPerson(study) {
+  const g = studyGrounded(study);
+  return g ? personaById(g.cfg.persona).person : "";
+}
+function studyVariant(study) {
+  const g = studyGrounded(study);
+  if (!g) return "";
+  return personaById(g.cfg.persona).variantId || g.cfg.persona;
+}
+function studiesForPerson(personId) {
+  return Object.values(allStudies()).filter((s) => s.baselineRuns.length && studyPerson(s) === personId);
+}
+function defaultEvalScope(personId) {
+  return studiesForPerson(personId).filter((s) => s.product === "subscription-management" && studyVariant(s) === "full_description").map((s) => s.id);
+}
 function evalUi() {
-  STORE.ui.eval = STORE.ui.eval || { view: "home", item: null, open: "persona", scope: null, support: null, filter: "todo", progress: "mine" };
+  STORE.ui.eval = STORE.ui.eval || { view: "home", item: null, open: "persona", scope: null, support: null, filter: "todo", progress: "mine", person: "filomena" };
   const u = STORE.ui.eval;
   if (u.scope) u.scope = u.scope.filter((id) => studyById(id));
   if (u.item && !itemContext(u.item)) { u.item = null; u.view = "home"; }
-  if (!Array.isArray(u.scope)) u.scope = Object.values(allStudies()).filter((s) => s.product === "subscription-management" && s.baselineRuns.length && (runById(s.groundedRuns[0]) || {}).cfg?.persona === "full_description").map((s) => s.id);
+  if (!catalogPeople().some((p) => p.id === u.person)) {
+    const first = (u.scope || []).map(studyById).find(Boolean);
+    const inferred = first && studyPerson(first);
+    u.person = catalogPeople().some((p) => p.id === inferred) ? inferred : "filomena";
+  }
+  if (!Array.isArray(u.scope)) u.scope = defaultEvalScope(u.person);
   return u;
 }
 function queueSet() {
@@ -136,6 +157,7 @@ const Evaluate = {
       <div class="stack">
         <section class="resume">
           <div class="spread"><h2>Continue my reviews</h2><span class="small" style="color:#b7b4d0">${items.length} responses in your queue</span></div>
+          <div class="row wrap" style="margin-top:10px"><span class="small faint">Persona</span><div class="seg" role="group" aria-label="Persona">${catalogPeople().map((p) => `<button data-action="eval-person" data-person="${esc(p.id)}" aria-pressed="${u.person === p.id}" title="${esc(p.role || p.name)}">${esc(p.name)}</button>`).join("")}</div></div>
           <div class="prog-big" aria-hidden="true"><i style="width:${(100 * done) / Math.max(1, items.length)}%"></i><i class="half" style="width:${(100 * half) / Math.max(1, items.length)}%"></i></div>
           ${nameMissing ? `<p style="color:#cfcce3">Add your name on the right so your scores are kept apart from other reviewers'.</p>` : next
             ? `<div class="row"><button class="btn primary" data-action="open-item" data-id="${esc(next.id)}">${next.st === "none" ? "Start" : "Resume"} ${anonCode(next.id)}</button>
@@ -337,27 +359,28 @@ const Evaluate = {
 
   /* Which studies feed the queue: journeys by cue detail, per product. */
   scopePanel(u) {
-    const studies = Object.values(allStudies()).filter((s) => s.baselineRuns.length);
+    const person = catalogPeople().find((p) => p.id === u.person) || catalogPeople()[0];
+    const studies = studiesForPerson(u.person);
     const byProduct = {};
     studies.forEach((s) => (byProduct[s.product] = byProduct[s.product] || []).push(s));
     const on = (id) => u.scope.includes(id);
     return `<section class="panel panel-pad">
-      <h3>Studies in this queue</h3><p class="tray-hint">Choose which journey and cue combinations feed your assignments.</p>
-      ${Object.entries(byProduct).map(([pid, list]) => {
-        const g = (s) => runById(s.groundedRuns[0]);
-        const saved = list.filter((s) => s.origin === "saved" && g(s).cfg.persona === "full_description");
-        const other = list.filter((s) => !saved.includes(s));
-        const journeys = Object.values(DATA.cycles).filter((c) => saved.some((s) => g(s).cfg.journey === c.id));
-        const cell = (c, detail) => { const s = saved.find((x) => g(x).cfg.journey === c.id && g(x).cfg.detail === detail); return s ? `<button class="scope-cell" data-action="scope" data-study="${esc(s.id)}" aria-pressed="${on(s.id)}" aria-label="${esc(c.short_title)}, ${detail} cue">${on(s.id) ? ICON.check : ""}</button>` : `<span class="faint">–</span>`; };
+      <h3>Studies in this queue</h3><p class="tray-hint">Showing ${esc(person ? person.name : "this persona")}. The grid is the full biography. Choose which products and journeys feed your assignments.</p>
+      ${PRODUCTS.filter((p) => !p.missing).map((product) => {
+        const list = byProduct[product.id] || [];
+        const g = (s) => studyGrounded(s);
+        const full = list.filter((s) => studyVariant(s) === "full_description");
+        const other = list.filter((s) => studyVariant(s) !== "full_description");
+        const journeys = Object.values(DATA.cycles);
+        const cell = (c, detail) => { const s = full.find((x) => g(x) && g(x).cfg.journey === c.id && g(x).cfg.detail === detail); return s ? `<button class="scope-cell" data-action="scope" data-study="${esc(s.id)}" aria-pressed="${on(s.id)}" aria-label="${esc(c.short_title)}, ${detail} cue">${on(s.id) ? ICON.check : ""}</button>` : `<span class="faint">–</span>`; };
         const nOn = list.filter((s) => on(s.id)).length;
         return `<div class="scope-block">
-          <div class="spread"><b class="small">${esc(productOf(pid).short)}</b><span class="row"><span class="tiny faint">${nOn}/${list.length} on</span><button class="btn ghost sm" data-action="scope-all" data-p="${pid}" data-v="1">All</button><button class="btn ghost sm" data-action="scope-all" data-p="${pid}" data-v="0">None</button></span></div>
+          <div class="spread"><b class="small">${esc(product.short)}</b><span class="row"><span class="tiny faint">${nOn}/${list.length} on</span><button class="btn ghost sm" data-action="scope-all" data-p="${product.id}" data-v="1">All</button><button class="btn ghost sm" data-action="scope-all" data-p="${product.id}" data-v="0">None</button></span></div>
           <table class="scope-table"><thead><tr><th>Journey</th><th>Brief</th><th>Detailed</th></tr></thead>
             <tbody>${journeys.map((c) => `<tr><td>${esc(c.short_title.replace(/^Cycle \d: /, ""))}</td><td>${cell(c, "brief")}</td><td>${cell(c, "detailed")}</td></tr>`).join("")}</tbody></table>
           ${other.length ? `<div class="row wrap" style="margin-top:8px">${other.map((s) => `<button class="chip wrapchip" data-action="scope" data-study="${esc(s.id)}" aria-pressed="${on(s.id)}">${esc(s.name)}</button>`).join("")}</div>` : ""}
         </div>`;
       }).join("")}
-      ${(() => { const waiting = catalogPeople().filter((p) => { const c = personaCoverage(p.id); return c.pending > 0 && c.saved === 0; }); return waiting.length ? `<div class="note" style="margin-top:12px"><b>${waiting.map((p) => esc(p.name)).join(", ")}</b> are set up for the same 108-interview matrix. They stay out of this queue until those interviews are generated. Nothing here calls the model.</div>` : ""; })()}
     </section>`;
   },
 
@@ -385,7 +408,7 @@ const Evaluate = {
             <div class="spread"><h3>This interview setup</h3><span class="small faint">Fixed across Q1-Q7</span></div>
             <div class="row wrap" style="margin-top:8px">
               <span class="chip focus">${esc(productOf(run.cfg.product).short)}</span>
-              <span class="chip line">${esc(persona ? persona.variant : run.cfg.persona)}</span>
+              <span class="chip line">${esc(persona ? `${persona.name} · ${persona.variant}` : run.cfg.persona)}</span>
               <span class="chip ${run.cfg.arm === "grounded" ? "grnd" : "base"}">${run.cfg.arm === "grounded" ? "Grounded" : "Baseline"}</span>
               ${cyc ? `<span class="chip line">${esc(cycleName)}</span>` : ""}
               ${cyc ? `<span class="chip line">${esc(DETAIL[run.cfg.detail].name)} · ${esc(TIMING[run.cfg.timing].name.toLowerCase())}</span>` : ""}
@@ -510,8 +533,25 @@ const Evaluate = {
     App.on("qview", (el) => { evalUi().qview = el.dataset.k; save(); });
     App.on("qprogress", (el) => { evalUi().progress = el.dataset.k; save(); });
     App.on("qgroup", (el) => { const u = evalUi(); u.open_groups = u.open_groups || {}; const k = el.dataset.k; u.open_groups[k] = u.open_groups[k] === false; save(); });
+    App.on("eval-person", (el) => {
+      const u = evalUi();
+      const next = el.dataset.person;
+      if (!catalogPeople().some((p) => p.id === next) || next === u.person) return;
+      const wanted = u.scope.map(studyById).filter(Boolean).map((s) => {
+        const g = studyGrounded(s);
+        return g ? { product: s.product, journey: g.cfg.journey, detail: g.cfg.detail, variant: studyVariant(s) } : null;
+      }).filter(Boolean);
+      u.person = next;
+      const matched = studiesForPerson(next).filter((s) => {
+        const g = studyGrounded(s);
+        return g && wanted.some((w) => w.product === s.product && w.journey === g.cfg.journey && w.detail === g.cfg.detail && w.variant === studyVariant(s));
+      });
+      u.scope = (matched.length ? matched : studiesForPerson(next).filter((s) => s.product === "subscription-management" && studyVariant(s) === "full_description")).map((s) => s.id);
+      u.view = "home";
+      save();
+    });
     App.on("scope-all", (el) => {
-      const u = evalUi(); const ids = Object.values(allStudies()).filter((s) => s.product === el.dataset.p && s.baselineRuns.length).map((s) => s.id);
+      const u = evalUi(); const ids = studiesForPerson(u.person).filter((s) => s.product === el.dataset.p).map((s) => s.id);
       u.scope = el.dataset.v === "1" ? Array.from(new Set([...u.scope, ...ids])) : u.scope.filter((x) => !ids.includes(x));
       save();
     });
