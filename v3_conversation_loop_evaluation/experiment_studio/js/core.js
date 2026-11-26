@@ -306,11 +306,49 @@ function loadStore() {
 }
 let saveTimer = null;
 let suppressCloudPush = 0;
+let storageFullNotified = false;
+/* Automated judge lanes are large and already live in Firestore. Keeping them
+   in localStorage pushes the origin over the browser quota and makes every
+   click show a storage warning. Human and Jev reviews stay local. */
+function localStorePayload() {
+  const skip = new Set([PREVIOUS_JUDGE_KEY, ...RUBRIC_JUDGES.map((j) => j.key)]);
+  const reviews = {};
+  Object.entries(STORE.reviews || {}).forEach(([ek, items]) => { if (!skip.has(ek)) reviews[ek] = items; });
+  return {
+    reviewer: STORE.reviewer,
+    reviews,
+    liveRuns: STORE.liveRuns,
+    liveStudies: STORE.liveStudies,
+    observations: STORE.observations,
+    draft: STORE.draft,
+    ui: STORE.ui,
+    conn: STORE.conn,
+    cloud: STORE.cloud,
+  };
+}
+function writeLocalStore() {
+  const payload = JSON.stringify(localStorePayload());
+  try {
+    localStorage.setItem(STORE_KEY, payload);
+    return true;
+  } catch (e) {
+    try {
+      localStorage.removeItem(STORE_KEY);
+      localStorage.setItem(STORE_KEY, payload);
+      return true;
+    } catch (e2) {
+      return false;
+    }
+  }
+}
 function persist(immediate) {
   clearTimeout(saveTimer);
   const write = () => {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(STORE)); }
-    catch (e) { toast("This browser's storage is full. Export your work from the menu to keep it."); }
+    if (writeLocalStore()) storageFullNotified = false;
+    else if (!storageFullNotified) {
+      storageFullNotified = true;
+      toast("This browser's storage is full. Export your work from the Data menu to keep it.");
+    }
     if (!suppressCloudPush) CloudSync.queuePush("persist");
   };
   if (immediate) write(); else saveTimer = setTimeout(write, 250);
