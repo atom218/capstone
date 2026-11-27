@@ -217,6 +217,7 @@ python3 build_studio.py
 | `js/interviews.js` | Interviews workspace: prompt blocks A–E and answers per question |
 | `js/evaluate.js` | Evaluate workspace |
 | `js/compare.js` | Compare results workspace |
+| `analysis/` | Published read-only grounding analysis and its supporting pages |
 | `js/app.js` | Shell, routing, event delegation |
 
 ## How the saved v3 runs map onto the new settings
@@ -362,3 +363,17 @@ have different numbers of interviews.
 - "Load illustrative scores" in Compare fills clearly flagged placeholder
   scores so the view can be explored before real reviews exist. Remove them
   before reading any result.
+
+
+### Research analysis workspace
+
+Open **Analysis** in the sidebar, or add `#analysis` to the Studio URL. It shows
+an unmodified copy of the published November 27 research dashboard, including
+both judges, all question and journey filters, the full annotated answer pairs,
+and the print poster. It uses the same fixed score snapshot as the standalone
+poster. Opening this tab does not save evaluations or change the cloud data.
+
+To update it after a new verified analysis release, copy that release's generated
+`index.html`, `pilot.html`, and `speaking-script.html` into `analysis/`. Keep the
+three files from the same release so their in-page links stay valid. The Studio
+build still uses `python3 build_studio.py` for changes to the sidebar or shell.

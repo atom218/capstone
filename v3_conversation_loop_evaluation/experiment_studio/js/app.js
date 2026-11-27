@@ -1,6 +1,8 @@
 /* Experiment Studio · shell, routing and event delegation */
 "use strict";
 
+const ANALYSIS_URL = "./analysis/index.html";
+
 const WORKSPACES = [
   { id: "design", name: "Design", title: "Design study",
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="7" height="7" rx="2"/><rect x="14" y="4" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="6" rx="2"/><path d="M17.5 14v6M14.5 17h6"/></svg>' },
@@ -10,6 +12,8 @@ const WORKSPACES = [
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h5M8 16h3"/><path d="M14.5 15.5l1.6 1.6 3-3.2"/></svg>' },
   { id: "compare", name: "Compare", title: "Compare results",
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 8h18M3 16h18"/><circle cx="7" cy="8" r="2" fill="currentColor"/><circle cx="12" cy="16" r="2" fill="currentColor"/><circle cx="17" cy="8" r="2" fill="currentColor"/><path d="M12 10v4"/></svg>' },
+  { id: "analysis", name: "Analysis", title: "Research analysis",
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16M8 16v-4m4 4V8m4 8v-6m4 6V5"/></svg>' },
 ];
 
 const App = {
@@ -20,9 +24,11 @@ const App = {
   onInput(name, fn, mode) { this.inputs[name] = { fn, mode }; },
   dispatch(name, el) { const fn = this.actions[name]; if (fn) fn(el); },
   go(ws, opts = {}) {
-    this.ws = ws; STORE.ui.ws = ws;
+    this.ws = ws;
+    if (ws !== "analysis") STORE.ui.ws = ws;
     if (ws === "compare" && opts.study) { cmpUi().study = opts.study; const st = studyById(opts.study); if (st) cmpUi().shelf = st.product; }
-    closeLayer(); hideSelChip(); persist();
+    closeLayer(); hideSelChip();
+    if (ws !== "analysis") persist();
     // Sandboxed previews (origin "null") refuse history updates; the workspace still switches.
     try { if (location.hash !== "#" + ws) history.replaceState(null, "", "#" + ws); } catch (e) { /* no addressable URL here */ }
     this.render(); window.scrollTo(0, 0);
@@ -37,16 +43,27 @@ const App = {
     const shelves = $$("#page .shelf").map((n) => ({ sig: shelfSig(n), left: n.scrollLeft }));
     $("#rail").innerHTML = this.rail();
     $("#topbar").innerHTML = this.topbar();
-    const mod = { design: Design, interviews: Interviews, evaluate: Evaluate, compare: Compare }[this.ws];
-    try {
-      $("#page").innerHTML = mod.render();
-    } catch (err) {
-      // Never leave a workspace unusable: show what failed and offer a reset of this view's saved state.
-      console.error(err);
-      $("#page").innerHTML = `<section class="panel panel-pad" role="alert"><h2>This view hit an error</h2>
-        <p class="muted" style="margin:6px 0 12px">${esc(err.message || String(err))}</p>
-        <p class="small muted" style="margin-bottom:12px">Your reviews, observations and launched runs are not affected. Resetting clears only this workspace's selections.</p>
-        <button class="btn primary" data-action="reset-view">Reset this view</button></section>`;
+    const page = $("#page");
+    const analysis = $("#analysis-workspace");
+    const showingAnalysis = this.ws === "analysis";
+    page.hidden = showingAnalysis;
+    analysis.hidden = !showingAnalysis;
+    if (showingAnalysis) {
+      // Keep the iframe mounted so team sync renders and tab switches preserve its filters.
+      const frame = $("#analysis-frame");
+      if (!frame.hasAttribute("src")) frame.setAttribute("src", ANALYSIS_URL);
+    } else {
+      const mod = { design: Design, interviews: Interviews, evaluate: Evaluate, compare: Compare }[this.ws];
+      try {
+        page.innerHTML = mod.render();
+      } catch (err) {
+        // Never leave a workspace unusable: show what failed and offer a reset of this view's saved state.
+        console.error(err);
+        page.innerHTML = `<section class="panel panel-pad" role="alert"><h2>This view hit an error</h2>
+          <p class="muted" style="margin:6px 0 12px">${esc(err.message || String(err))}</p>
+          <p class="small muted" style="margin-bottom:12px">Your reviews, observations and launched runs are not affected. Resetting clears only this workspace's selections.</p>
+          <button class="btn primary" data-action="reset-view">Reset this view</button></section>`;
+      }
     }
     document.title = `${WORKSPACES.find((w) => w.id === this.ws).title} · Experiment Studio`;
     scroller.scrollTop = y;
@@ -80,6 +97,10 @@ const App = {
       <span class="spacer"></span><span class="rail-foot">Northwestern × Accenture</span>`;
   },
   topbar() {
+    if (this.ws === "analysis") {
+      return `<div class="title"><h1>Research analysis</h1></div><span class="grow"></span>
+        <a class="btn sm analysis-open" href="${ANALYSIS_URL}" target="_blank" rel="noopener">Open full dashboard</a>`;
+    }
     const helper = CONN.helper ? "Local helper" : connReady() ? "Direct" : "Not connected";
     const sync = cloudStateLabel();
     const left = this.ws === "design"
