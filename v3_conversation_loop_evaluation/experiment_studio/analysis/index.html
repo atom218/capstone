@@ -13,21 +13,41 @@
 .chart{--label-col:minmax(9rem,1fr);display:grid;grid-template-columns:var(--label-col) repeat(2,minmax(0,2fr));column-gap:clamp(.65rem,2vw,1.7rem);row-gap:.15rem;border-top:1px solid var(--line);padding-top:.7rem}.judge-head{font-size:1rem;font-weight:800;color:var(--judge);text-align:center}.chart-name,.plot-cell{border-top:1px solid var(--line);padding:.65rem 0}.chart-name{font-size:1rem;align-content:center;line-height:1.2;font-weight:730}.chart-name.first{color:var(--claude)}.plot-cell{min-width:0}.plot-track{height:2.1rem;position:relative;border-bottom:1px solid #a8bbbd;margin:0 .4rem .42rem}.zero{position:absolute;left:50%;top:0;bottom:0;border-left:1px solid #677e81}.dot{position:absolute;left:var(--x);top:var(--y);transform:translate(-50%,-50%);width:.54rem;height:.54rem;border-radius:50%;background:white;border:2px solid var(--judge);z-index:1}.dot.mean{width:.91rem;height:.91rem;background:var(--judge);border:2px solid white;box-shadow:0 0 0 1px var(--judge);z-index:2}.dot:hover{z-index:3}.axis{display:flex;justify-content:space-between;margin:0 .4rem;color:var(--muted);font-size:.77rem;font-variant-numeric:tabular-nums}.plot-label{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:.05rem .55rem;margin:0 .38rem}.plot-label strong{font-size:1.05rem;color:var(--judge);font-variant-numeric:tabular-nums}.plot-label span{font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}.legend{font-size:.85rem;margin-top:.7rem}.details{border-top:1px solid var(--line);margin-top:1rem;padding-top:.75rem}.details summary{font-weight:700;color:var(--claude)}.details p{max-width:88ch}.details summary+div{margin-top:.8rem}
 .table-scroll{overflow:auto}.heatmaps{display:grid;grid-template-columns:1fr 1fr;gap:1rem}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{padding:.55rem .65rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}thead th{font-size:.84rem;color:var(--muted)}td.val{font-size:1rem;font-weight:750;text-align:center}td.val small{display:block;font-size:.76rem;color:var(--ink);font-weight:500}td.val.positive{background:var(--pos);color:#075149}td.val.negative{background:var(--neg);color:#78381e}.heatmap caption{text-align:left;font-weight:800;margin-bottom:.4rem;color:var(--judge)}
 .intro{margin-bottom:1.3rem}.intro h1{font-size:clamp(2rem,4vw,3.9rem)}.intro p{font-size:1.08rem;color:var(--muted);margin:.65rem 0 0;max-width:73ch}.evidence-layout{display:grid;grid-template-columns:minmax(12rem,17rem) minmax(0,1fr);gap:1rem;align-items:start}.case-menu{padding:.45rem}.case-menu a{display:block;color:var(--ink);padding:.6rem .7rem;font-weight:650;text-decoration:none;border-radius:.4rem;line-height:1.24}.case-menu a span{display:block;color:var(--muted);font-size:.78rem;margin-bottom:.22rem}.case-menu a[aria-current=true],.case-menu a:hover{background:var(--accent);color:#0a5148}.case-card h2{font:700 clamp(1.55rem,3.2vw,2.65rem)/1.1 var(--serif);letter-spacing:-.035em}.case-meta{color:var(--muted);font-size:.85rem;margin-bottom:.3rem}.question{margin:1rem 0;padding:.85rem 1rem;border-left:4px solid var(--line);background:var(--paper)}.question strong,.answer strong{display:block;line-height:1.2;margin-bottom:.42rem}.answer-grid{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}.answer{padding:.9rem;border:1px solid var(--line);border-radius:.45rem;line-height:1.55;min-width:0}.answer p{white-space:pre-wrap;overflow-wrap:anywhere}.answer mark, .print-quote mark{padding:.05em .1em;border-radius:.15em;color:inherit;background:#bde8d6;box-decoration-break:clone;-webkit-box-decoration-break:clone}.answer.baseline mark, .print-quote.baseline mark{background:var(--baseline)}.change-note{margin:.9rem 0;padding:.75rem 1rem;background:var(--accent);border-radius:.4rem}.change-note p+p{margin-top:.35rem}.score-table thead th:not(:first-child),.score-table td{text-align:center}.score-table td b{white-space:nowrap}.score-table .delta{display:inline-block;margin-left:.25rem;font-size:.8rem;color:var(--muted)}.score-table .positive .delta,.gain{color:#056257}.score-table .negative .delta,.loss{color:#883b21}.source-ids{color:var(--muted);font-size:.85rem;overflow-wrap:anywhere}.next-case{margin-top:1rem;display:flex;justify-content:space-between;gap:.8rem}.next-case a{font-weight:650}
-.journey-curve{display:block;width:100%;height:auto;min-width:0}.curve-guide{stroke:#dee8e7;stroke-width:1}.curve-zero{stroke:#a4b8b6}.curve-stroke{stroke:#087366;stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round}.curve-point{fill:#087366;stroke:white;stroke-width:1.2}.curve-point.marked{fill:#b44a16;stroke:white;stroke-width:1.6}.curve-point.selected-question{stroke:#6e2b0c;stroke-width:2.3;r:7}.curve-marker-guide{stroke:#c16b3f;stroke-width:1.5;stroke-dasharray:3 2}.curve-tick{font-size:11.5px;fill:#4e676a}.curve-tick.marked{fill:#92370e;font-weight:800}.curve-explainer{color:var(--muted);font-size:.85rem}
-.case-trajectory{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);align-items:center;gap:.5rem 1rem;background:#f2f7f5;border:1px solid var(--line);border-radius:.45rem;margin:0 0 .9rem;padding:.8rem 1rem}.case-trajectory h3{margin-bottom:.25rem}.case-trajectory p+p{margin-top:.2rem}.case-trajectory .journey-curve{max-width:37rem;margin:auto}.journey-figures{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-top:.65rem}.journey-figure{min-width:0;margin:0;padding:.5rem .55rem;border:1px solid var(--line);border-radius:.4rem}.journey-figure figcaption{font-weight:700;line-height:1.2;min-height:1.4em}.journey-figure figcaption b{color:var(--claude);margin-right:.18em}.question-markers{display:flex;flex-wrap:wrap;gap:.14rem .36rem;font-size:.83rem;line-height:1.25;color:var(--muted)}.question-markers b{color:#92370e}.question-markers .selected-question{color:#6e2b0c;background:#f9dec8;border-radius:.2rem;outline:2px solid #f9dec8}.curve-jump{border:0;background:transparent;padding:0;text-decoration:underline;text-underline-offset:.18em;color:var(--claude);font:inherit}
-@media(max-width:700px){.case-trajectory,.journey-figures{grid-template-columns:1fr}}
+.journey-curve{display:block;width:100%;height:auto;min-width:0}.curve-guide{stroke:#dee8e7;stroke-width:1}.curve-zero{stroke:#a4b8b6}.curve-stroke{stroke:#087366;stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round}.curve-point{fill:#087366;stroke:white;stroke-width:1.2}.curve-point.marked{fill:#b44a16;stroke:white;stroke-width:1.6}.curve-marker-guide{stroke:#c16b3f;stroke-width:1.5;stroke-dasharray:3 2}.curve-tick{font-size:11.5px;fill:#4e676a}.curve-tick.marked{fill:#92370e;font-weight:800}
+ .marked-journey{min-width:0;margin:0;padding:.6rem .75rem;background:#f2f7f5;border:1px solid var(--line);border-radius:.45rem}
+.marked-journey figcaption{font-weight:750;line-height:1.19;margin-bottom:.25rem}
+.reference-readout,.cue-delivery,.pair-legend,.other-journeys{color:var(--muted);font-size:.86rem}
+.reference-readout strong{color:#92370e}
+.pair-context{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:.75rem;margin:.65rem 0;align-items:start}
+.pair-question{border-left:3px solid #96b9ad;padding:.1rem 0 .1rem .65rem}
+.pair-question p+p{margin-top:.25rem}
+.pair-summary,.finding-context{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.65rem;align-items:center;margin:.5rem 0}
+.pair-summary{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}
+.pair-summary .change-note{margin:0}
+.pattern-grid,.featured-pairs{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;align-items:start;margin:.65rem 0}
+.journey-finding,.featured-pair{border:1px solid var(--line);border-radius:.45rem;padding:.8rem}
+.journey-finding h3{margin:.2rem 0}
+.pattern-criterion{color:var(--muted);font-size:.78rem}
+.pattern-table{margin-top:.12rem}
+.pattern-table th,.pattern-table td{text-align:center;padding:.22rem .3rem}
+.pattern-table small{display:block;color:var(--muted);font-size:.75em}
+.finding-change,.inline-question,.other-journeys,.full-pair-link{margin-top:.36rem}
+#dashboard-study-design{margin-top:1rem}
+@media(max-width:1100px){.featured-pairs,.pattern-grid{grid-template-columns:1fr}}
+@media(max-width:750px){.pair-context,.pair-summary{grid-template-columns:1fr}}
+@media(max-width:400px){.finding-context{grid-template-columns:1fr}}
 
 .matrix th:first-child{min-width:10rem}.matrix th{vertical-align:middle}.matrix td{text-align:center}.matrix button{min-width:3.35rem;border:1px solid #92b4ae;border-radius:.3rem;background:var(--accent);padding:.25rem .45rem;font-weight:750;color:var(--claude)}.matrix button[aria-pressed=true]{outline:2px solid var(--claude);outline-offset:2px}.matrix .empty{color:var(--muted)}.matrix-evidence{margin-top:1rem;min-height:2.2rem}.matrix-evidence article{padding:.65rem 0;border-bottom:1px solid var(--line)}.matrix-evidence p{color:var(--muted);margin:.2rem 0}.footer{padding:1.2rem 0;display:flex;gap:.5rem 1rem;flex-wrap:wrap;justify-content:space-between;color:var(--muted);font-size:.85rem}.print-sheet{display:none}
 @media(max-width:900px){.section-bar{align-items:flex-start;flex-direction:column}.heatmaps{grid-template-columns:1fr}.evidence-layout{grid-template-columns:1fr}.case-menu{display:flex;overflow:auto;gap:.3rem}.case-menu a{min-width:12rem}.brand small{display:none}}
 @media(max-width:620px){.finding-grid{grid-template-columns:1fr 1fr;gap:.55rem}.finding:last-child{grid-column:1/-1}.finding{padding:.8rem}.finding p{font-size:.83rem}.chart{--label-col:minmax(4.5rem,1fr);column-gap:.55rem}.chart-name{font-size:.78rem}.plot-label{gap:0;flex-direction:column}.plot-label span{font-size:.72rem}.axis{font-size:.65rem;margin:0}.answer-grid{grid-template-columns:1fr}.tabs{gap:1rem}.tabs a{font-size:.9rem}.filters{gap:.45rem}.select-label select{max-width:11rem}.section-bar p{font-size:.95rem}}
 
-.result-grid{margin-bottom:1rem}.result-grid h2,.view .panel>h2{margin-bottom:.3rem}.result-grid h2+p,.view .panel>h2+p{color:var(--muted)}.study-grid{margin:.65rem 0 .4rem}.study-grid th,.study-grid td{border-bottom:1px solid #cddbdc;padding:.43rem .5rem}.study-grid thead th:not(:first-child),.study-grid thead tr:nth-child(2) th{text-align:center}.study-grid thead [scope=colgroup]{font-size:1rem;letter-spacing:.005em}.study-grid td{text-align:center;white-space:nowrap}.study-grid small{display:block;color:var(--muted);font-weight:510;font-size:.75em;margin-top:.08rem}.study-grid th[scope=row]{line-height:1.24}.delta-cell{font-variant-numeric:tabular-nums}.delta-cell.neutral{background:#f6f8f8}.delta-cell.positive{color:#0a564a;background:rgba(69,172,143,var(--tint))}.delta-cell.negative{color:#7e371e;background:rgba(232,146,102,var(--tint))}.reading-notes{color:var(--muted);font-size:.9rem;margin-top:.65rem}.reading-notes p+p{margin-top:.42rem}.signal-sub{font-size:.78em;font-weight:500;color:var(--muted);margin-top:.3rem}.atlas-caption{margin:.4rem 0;color:var(--muted)}.atlas caption{text-align:left;font-weight:800;margin-top:.8rem}.atlas td,.atlas thead th{white-space:nowrap}.atlas tbody th{min-width:14rem}#journeys .panel+.panel{margin-top:1rem}#journeys .signals th[scope=row]{min-width:13rem}.score-grid th[scope=row],.wellness-grid th[scope=row]{min-width:8.4rem}.tabs{overflow-x:auto}.tabs a{white-space:nowrap}.study-flow{display:grid;gap:.35rem;margin:.65rem 0}.study-flow>div{border-left:4px solid #8fb9af;background:#edf5f3;padding:.36rem .52rem}.study-flow span{display:block;color:var(--muted);font-size:.82em}.journey-key{display:grid;grid-template-columns:1fr 1fr;gap:.23rem .5rem}
+.result-grid{margin-bottom:1rem}.result-grid h2,.view .panel>h2{margin-bottom:.3rem}.result-grid h2+p,.view .panel>h2+p{color:var(--muted)}.study-grid{margin:.65rem 0 .4rem}.study-grid th,.study-grid td{border-bottom:1px solid #cddbdc;padding:.43rem .5rem}.study-grid thead th:not(:first-child),.study-grid thead tr:nth-child(2) th{text-align:center}.study-grid thead [scope=colgroup]{font-size:1rem;letter-spacing:.005em}.study-grid td{text-align:center;white-space:nowrap}.study-grid small{display:block;color:var(--muted);font-weight:510;font-size:.75em;margin-top:.08rem}.study-grid th[scope=row]{line-height:1.24}.delta-cell{font-variant-numeric:tabular-nums}.delta-cell.neutral{background:#f6f8f8}.delta-cell.positive{color:#0a564a;background:rgba(69,172,143,var(--tint))}.delta-cell.negative{color:#7e371e;background:rgba(232,146,102,var(--tint))}.reading-notes{color:var(--muted);font-size:.9rem;margin-top:.65rem}.reading-notes p+p{margin-top:.42rem}.atlas-caption{margin:.4rem 0;color:var(--muted)}.atlas caption{text-align:left;font-weight:800;margin-top:.8rem}.atlas td,.atlas thead th{white-space:nowrap}.atlas tbody th{min-width:14rem}#journeys .panel+.panel{margin-top:1rem}.score-grid th[scope=row],.wellness-grid th[scope=row]{min-width:8.4rem}.tabs{overflow-x:auto}.tabs a{white-space:nowrap}.study-flow{display:grid;gap:.35rem;margin:.65rem 0}.study-flow>div{border-left:4px solid #8fb9af;background:#edf5f3;padding:.36rem .52rem}.study-flow span{display:block;color:var(--muted);font-size:.82em}
 @page{size:48in 36in;margin:.67in}
 @media print{
-  :root{font-size:34px;background:white}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.no-print{display:none!important}
+  :root{font-size:31px;background:white}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.no-print{display:none!important}
   .print-sheet{display:flex;flex-direction:column;gap:.64rem;min-height:34in}.print-sheet .hero{padding:.7rem 1.2rem;gap:.35rem;border-radius:.5rem}.print-sheet .hero p{font-size:1rem;max-width:none}.print-sheet .hero .poster-study-name{font-size:.9rem;font-weight:680;color:#a9d5ca}.print-sheet h1{font-size:2.42rem;max-width:none;letter-spacing:-.033em}.print-sheet .finding-grid{margin:0;gap:.65rem}.print-sheet .finding{padding:.43rem .65rem;border-radius:.4rem}.print-sheet .finding strong{font-size:1.7rem;letter-spacing:-.025em}.print-sheet .finding p{font-size:.83rem}.print-sheet .finding span{font-size:.84rem}
-  .paper-columns{display:grid;grid-template-columns:.91fr 1.32fr 1.05fr;gap:.63rem;align-items:start}.paper-column{min-width:0;display:grid;gap:.6rem}.paper-column .panel{padding:.62rem .73rem;border-radius:.4rem;break-inside:avoid}.paper-column h2{font-size:1.25rem;margin-bottom:.34rem}.paper-column h3{font-size:.93rem}.paper-column p{font-size:.85rem;line-height:1.34}.paper-column p+p{margin-top:.38rem}.paper-fine,.paper-column .paper-fine{font-size:.77rem;color:var(--muted)}.paper-column .study-flow{margin:.45rem 0;gap:.22rem}.paper-column .study-flow>div{padding:.25rem .36rem;font-size:.83rem}.paper-column .reading-notes p,.paper-column .reading-notes{font-size:.78rem}.paper-column .reading-notes{margin-top:.36rem}.paper-column .study-grid{margin:.38rem 0 .25rem}.paper-column .study-grid th,.paper-column .study-grid td{padding:.26rem .24rem;font-size:.77rem}.paper-column .study-grid th[scope=colgroup]{font-size:.88rem}.paper-column .study-grid tbody th{min-width:0}.paper-column .study-grid small{font-size:.7rem}.paper-column .score-grid td small{font-size:.62rem}.paper-column .signals th[scope=row]{min-width:0}.paper-column .signals th small{max-width:14rem}.paper-column .signals td small{font-size:.64rem}.paper-column .case-meta{color:var(--muted);font-size:.76rem}
-  .paper-pair{margin-top:.54rem;padding-top:.52rem;border-top:1px solid var(--line)}.paper-pair h3+p{margin-top:.18rem}.paper-pair .print-question{font-size:.79rem;margin:.31rem 0}.paper-pair .answer-grid{grid-template-columns:1fr 1fr;gap:.34rem}.paper-pair .answer{padding:.34rem .38rem;border-radius:.25rem}.paper-pair .answer strong{font-size:.8rem;margin-bottom:.18rem}.paper-pair .answer p{font-size:.72rem;line-height:1.28}.paper-pair .score-table{margin:.24rem 0}.paper-pair .score-table th,.paper-pair .score-table td{padding:.17rem .31rem;font-size:.75rem}.paper-pair .score-table .delta{font-size:.66rem}.paper-pair>p:last-child{font-size:.78rem;background:#edf5f3;border-radius:.22rem;padding:.28rem .34rem}.paper-footer{border-top:1px solid var(--line);padding-top:.38rem;color:var(--muted);margin-top:auto;font-size:.62rem}
+  .paper-columns{display:grid;grid-template-columns:.91fr 1.32fr 1.05fr;gap:.63rem;align-items:start}.paper-column{min-width:0;display:grid;gap:.6rem}.paper-column .panel{padding:.62rem .73rem;border-radius:.4rem;break-inside:avoid}.paper-column h2{font-size:1.25rem;margin-bottom:.34rem}.paper-column h3{font-size:.93rem}.paper-column p{font-size:.85rem;line-height:1.34}.paper-column p+p{margin-top:.38rem}.paper-fine,.paper-column .paper-fine{font-size:.77rem;color:var(--muted)}.paper-column .study-flow{margin:.45rem 0;gap:.22rem}.paper-column .study-flow>div{padding:.25rem .36rem;font-size:.83rem}.paper-column .reading-notes p,.paper-column .reading-notes{font-size:.78rem}.paper-column .reading-notes{margin-top:.36rem}.paper-column .study-grid{margin:.38rem 0 .25rem}.paper-column .study-grid th,.paper-column .study-grid td{padding:.21rem .24rem;font-size:.77rem}.paper-column .study-grid th[scope=colgroup]{font-size:.88rem}.paper-column .study-grid tbody th{min-width:0}.paper-column .study-grid small{font-size:.7rem}.paper-column .score-grid td small{font-size:.62rem}.paper-column .case-meta{color:var(--muted);font-size:.76rem}
+  .paper-pair .answer-grid{grid-template-columns:1fr 1fr;gap:.34rem}.paper-pair .answer{padding:.34rem .38rem;border-radius:.25rem}.paper-pair .answer strong{font-size:.8rem;margin-bottom:.18rem}.paper-pair .answer p{font-size:.72rem;line-height:1.28}.paper-pair .score-table{margin:.24rem 0}.paper-pair .score-table th,.paper-pair .score-table td{padding:.17rem .31rem;font-size:.75rem}.paper-pair .score-table .delta{font-size:.66rem}.paper-footer{border-top:1px solid var(--line);padding-top:.38rem;color:var(--muted);margin-top:auto;font-size:.62rem}
 }
 
 .secondary td{font-variant-numeric:tabular-nums}.secondary tbody th{font-weight:600}
@@ -35,10 +55,46 @@
 @media print{.paper-matrix .matrix th,.paper-matrix .matrix td{padding:.19rem .22rem;font-size:.65rem;line-height:1.16}.paper-matrix .matrix th:first-child{min-width:3.8rem}.paper-matrix .matrix{margin:.25rem 0}}
 
 @media print{
- .paper-trajectories .journey-figures{gap:.24rem;margin-top:.26rem}.paper-trajectories .journey-figure{padding:.19rem .24rem;border-radius:.23rem}.paper-trajectories .journey-figure figcaption{font-size:.68rem;min-height:2.35em}.paper-trajectories .question-markers{font-size:.59rem;gap:.12rem .19rem}.paper-trajectories .curve-explainer{font-size:.71rem}.paper-trajectories .journey-curve{margin:.06rem 0}
+  .paper-columns{grid-template-columns:1.03fr 1.15fr 1.21fr;gap:.51rem}
+  .paper-column{gap:.39rem}.print-sheet{gap:.38rem}
+  .paper-column .panel{padding:.48rem .56rem}
+  .paper-column .study-flow{grid-template-columns:1fr 1fr}
+  .results-column .panel{padding-block:.39rem}
+  .results-column p{line-height:1.26}
+  .results-column p+p{margin-top:.25rem}
+  .paper-footer{padding-top:.21rem;line-height:1.2}
+  .paper-column .case-meta,.paper-column .other-journeys,.paper-column .pattern-criterion{font-size:.67rem}
+  .paper-column .marked-journey{padding:.24rem .3rem;border-radius:.22rem}
+  .paper-column .marked-journey figcaption{font-size:.72rem;margin-bottom:.04rem}
+  .paper-column .reference-readout,.paper-column .cue-delivery{font-size:.62rem;line-height:1.17}
+  .paper-column .marked-journey p+p{margin-top:.08rem}
+  .paper-column .pattern-table th,.paper-column .pattern-table td{padding:.1rem .16rem;font-size:.69rem}
+  .paper-column .pattern-table small{font-size:.68em}
+  .paper-patterns .pattern-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:.22rem;margin:.26rem 0}
+  .paper-patterns .journey-finding{padding:.25rem .27rem;border-radius:.23rem}
+  .paper-patterns .journey-finding h3{font-size:.77rem;margin:.11rem 0}
+  .paper-patterns .finding-context{grid-template-columns:1fr;gap:.14rem;margin:.17rem 0}
+  .paper-patterns .finding-change{font-size:.69rem;line-height:1.2}
+  .paper-column .other-journeys{line-height:1.16;margin-top:.22rem}
+  .paper-featured .featured-pairs{display:block;margin:.2rem 0}
+  .paper-featured .featured-pair{padding:.27rem 0;border:0;border-top:1px solid var(--line);border-radius:0}
+  .paper-featured .pair-legend{font-size:.73rem;line-height:1.2}
+  .paper-featured .pair-context{grid-template-columns:.82fr 1.18fr;gap:.25rem;margin:.19rem 0}
+  .paper-featured .pair-question{padding-left:.25rem}
+  .paper-featured .pair-question p{font-size:.72rem;line-height:1.22}
+  .paper-featured .pair-question p+p{margin-top:.15rem}
+  .paper-featured .pair-summary{grid-template-columns:.88fr 1.12fr;gap:.24rem;margin:.22rem 0}
+  .paper-featured .change-note{border-radius:.2rem;padding:.21rem .26rem}
+  .paper-featured .change-note p{font-size:.7rem;line-height:1.19}
+  .paper-dot-plot .chart{--label-col:minmax(4.6rem,1fr);gap:.04rem .25rem;padding-top:.17rem;margin-top:.22rem}
+  .paper-dot-plot .chart-name,.paper-dot-plot .plot-cell{padding:.15rem 0}
+  .paper-dot-plot .plot-track{height:.71rem;margin:0 .16rem .1rem}
+  .paper-dot-plot .judge-head,.paper-dot-plot .chart-name,.paper-dot-plot .plot-label strong{font-size:.72rem}
+  .paper-dot-plot .dot{width:.27rem;height:.27rem;border-width:1.5px}
+  .paper-dot-plot .dot.mean{width:.39rem;height:.39rem}
+  .paper-dot-plot .axis,.paper-dot-plot .plot-label span{font-size:.58rem}
+  .paper-dot-plot .plot-label,.paper-dot-plot .axis{margin:0 .14rem}
 }
-
-@media print{.paper-column .study-flow{grid-template-columns:1fr 1fr}.paper-trajectories .curve-timing{display:none}.paper-trajectories .journey-figure figcaption{min-height:2em}.paper-trajectories .question-markers{line-height:1.17}.print-sheet{gap:.52rem}.paper-column{gap:.5rem}}
 </style>
 </head>
 <body>
@@ -54,15 +110,17 @@
     <section class="panel results-panel" aria-labelledby="chart-title">
       <div class="section-bar"><div><h2 id="chart-title">Where scores moved</h2><p>Mean change from matched baseline on the 0–3 rubric.</p></div><div class="filters" id="chart-filters"></div></div>
       <div id="plot" aria-live="polite"></div>
-      <p class="legend">Small dots show persona averages. The large dot shows the product average. Counts show grounded interviews that scored higher, tied or lower.</p>
+      <p class="legend" id="plot-legend"></p>
       <details class="details"><summary>Filtered criteria and baseline scores</summary><div id="heatmaps"></div></details>
       <details class="details"><summary>Methods and coverage</summary><div id="methods"></div></details>
     </section>
+    <section class="panel" id="dashboard-study-design"></section>
   </section>
   <section id="journeys" class="view" aria-labelledby="journeys-title" hidden>
     <div class="intro"><h1 id="journeys-title">Which journeys help on which questions?</h1><p>Each result compares the same question, product, persona and biography against its matched baseline. Brief and detailed cues are shown separately.</p></div>
     <section class="panel" id="dashboard-signals"></section>
-    <section class="panel" id="dashboard-trajectory"></section>
+    <section class="panel" id="dashboard-journey-patterns"></section>
+    <section class="panel" id="dashboard-implications"></section>
     <section class="panel" id="dashboard-wellness"></section>
     <section class="panel" aria-labelledby="turn-title">
       <div class="section-bar"><div><h2 id="turn-title">Explore all 28 study questions</h2><p>Use the filters to check the full results, including small gains, ties, and declines.</p></div><div class="filters" id="journey-filters"></div></div>
@@ -129,6 +187,7 @@ function turnStats(rows, judge, criterion, questions) {
   return summarize(rows.flatMap(r => questions.map(q => r.turns[judge][criterion][q-1])));
 }
 
+const deltaPlotLegend = 'Small dots show persona averages. Large dots show product averages. Counts show grounded interviews that scored higher, tied or lower.';
 const wellnessRows = data.runs.filter(r => r.product === 'mental-wellness');
 const sharedChange = judges.map(([j]) => stats(wellnessRows,j,'consequence'));
 const sharedPeople = Object.keys(people).filter(p => judges.every(([j]) => stats(wellnessRows.filter(r => r.person===p),j,'consequence').delta>0)).length;
@@ -212,28 +271,44 @@ function journeyCurve(id, turns) {
   </svg>`;
 }
 
-function trajectory(item) {
-  const [id,format] = item.cue.split(' ');
-  const ref = data.journeys[id].states[item.q-1];
-  const mood = ref.split('mood: ')[1];
-  const refValue = signed(data.journeys[id].sentiments[item.q-1]);
+function markedJourney(cue, q) {
+  const [id,format] = cue.split(' ');
+  const state = data.journeys[id].states[q-1];
+  const ref = signed(data.journeys[id].sentiments[q-1]);
+  const mood = state.split('mood: ')[1];
   const delivery = format==='coarse'
-    ? 'Brief cue: the prompt gives the opening state and general rules. The marked point shows where this question sits on the source curve.'
-    : `Detailed cue at Q${item.q}: ${ref.split('; ').join(', ')}.`;
-  return `<figure class="case-trajectory">
-    <div class="case-trajectory-copy"><h3>${id} · ${esc(journeyName(id))}</h3><p><strong>Q${item.q} · ${esc(questionLabel(item.product,item.q))}</strong></p>
-      <p class="curve-explainer">Reference at Q${item.q} <b>${refValue}</b> · ${esc(mood)}. ${esc(delivery)}</p><p class="curve-explainer">The curve shows the assigned reference on a −3 to +3 scale. Answer emotion was not measured here.</p></div>
-    ${journeyCurve(id,[item.q])}</figure>`;
+    ? 'Brief cue supplies the opening state and general rules.'
+    : `Detailed cue at Q${q} · ${state.split('; ').join(', ')}.`;
+  return `<figure class="marked-journey" data-journey="${id}" data-question="${q}">
+    <figcaption>${esc(journeyName(id))}</figcaption>
+    ${journeyCurve(id,[q])}
+    <p class="reference-readout"><strong>Q${q}</strong> · ${ref} · ${esc(mood)}</p>
+    <p class="cue-delivery">${esc(delivery)}</p>
+  </figure>`;
+}
+
+function pairComparison(item) {
+  return `<div class="answer-grid"><div class="answer baseline"><strong>Baseline</strong><p>${highlight(item.baseline,item.baselineMark)}</p></div><div class="answer"><strong>Grounded</strong><p>${highlight(item.grounded,item.groundedMark)}</p></div></div>
+    <div class="table-scroll">${scoreTable(item)}</div>`;
+}
+
+function pairContent(item, pattern, options = {}) {
+  return `<p class="case-meta">${data.products[item.product]} · ${people[item.person]} · ${cueNames[item.cue]} · Q${item.q}${options.showBio?` · ${bios[item.bio]}`:''}</p>
+  <div class="pair-context">
+    ${markedJourney(item.cue,item.q)}
+    <div class="pair-question"><p><strong>Q${item.q} · ${esc(questionLabel(item.product,item.q))}</strong></p><p>${esc(item.question)}</p></div>
+  </div>
+  <div class="${pattern?'pair-summary':''}">
+  ${pattern?patternScores(pattern):''}
+  <div class="change-note"><p><strong>What changed.</strong> ${esc(item.change)}</p>${options.showProductQuestion&&item.test?`<p><strong>Product question.</strong> ${esc(item.test)}</p>`:''}</div></div>
+  ${pairComparison(item)}`;
 }
 
 function evidence(index) {
   const item = data.cases[index];
+  const pattern = patterns.find(p=>p.proof===item.run);
   $('case-menu').innerHTML = data.cases.map((c,i) => `<a href="#evidence/${i+1}" ${index===i?'aria-current="true"':''}><span>${data.products[c.product]}</span>${esc(c.title)}</a>`).join('');
-  $('case-detail').innerHTML = `<p class="case-meta">${data.products[item.product]} · ${people[item.person]} · ${cueNames[item.cue]} · Q${item.q} · ${bios[item.bio]}</p><h2>${esc(item.title)}</h2>
-  <div class="question"><strong>Shared interview question</strong><p>${esc(item.question)}</p></div>${trajectory(item)}
-  <div class="answer-grid"><div class="answer baseline"><strong>Baseline · full answer</strong><p>${highlight(item.baseline,item.baselineMark)}</p></div><div class="answer"><strong>Grounded · full answer</strong><p>${highlight(item.grounded,item.groundedMark)}</p></div></div>
-  <div class="change-note"><p><strong>What changed.</strong> ${esc(item.change)}</p>${item.test?`<p><strong>Product question.</strong> ${esc(item.test)}</p>`:''}</div>
-  <div class="table-scroll">${scoreTable(item)}</div>
+  $('case-detail').innerHTML = `<h2>${esc(item.title)}</h2>${pairContent(item,pattern,{showBio:true,showProductQuestion:true})}
   <details class="details"><summary>Source answer IDs</summary><p class="source-ids">Baseline ${esc(item.bid)}<br>Grounded ${esc(item.run)}</p></details>
   <div class="next-case"><span>${index>0?`<a href="#evidence/${index}">Previous pair</a>`:''}</span><span>${index<data.cases.length-1?`<a href="#evidence/${index+2}">Next pair</a>`:''}</span></div>`;
 }
@@ -346,43 +421,57 @@ function wellnessSection() {
   <div class="reading-notes"><p><strong>C2 detailed</strong> had the largest average consequence gain across the seven wellness questions (${signed(c2[0])} Claude, ${signed(c2[1])} GPT).</p><p>Across configurations, consequence changes averaged ${signed(turnStats(wellnessRows,'C','consequence',topic).delta)} Claude and ${signed(turnStats(wellnessRows,'G','consequence',topic).delta)} GPT on the four topic-only questions. On the three screen questions they averaged ${signed(turnStats(wellnessRows,'C','consequence',screen).delta)} and ${signed(turnStats(wellnessRows,'G','consequence',screen).delta,3)}, respectively.</p></div>`;
 }
 
-const referenceQuestions = {
-  C1:[[6,'Sexual health · partner conversation']],
-  C2:[[1,'Cash flow · planning decision'],[3,'Wellness · check-in disclosure'],[4,'Wellness · ten-minute activity'],[7,'Subscriptions · routine fit']],
-  C3:[[7,'Wellness · daily-life fit (comparison)']],
-  C4:[[7,'Wellness · daily-life fit']],
-};
+const featuredPatterns = patterns.slice(1,3);
+const wellnessContrast = {p:'mental-wellness', q:7, cue:'C3 coarse', c:'consequence'};
+const otherPatterns = [patterns[0],wellnessContrast,...patterns.slice(3)];
+const curveLegend = 'Each curve shows assigned reference sentiment (−3 to +3). The orange dot marks the question.';
 
-function journeyReferenceSection(interactive) {
-  return `<h2>Where the questions sit on each journey</h2><p class="curve-explainer">The curve shows the assigned sentiment reference (−3 to +3). Orange dots locate the interview questions. <span class="curve-timing">Brief prompts use the opening cue and rules. Detailed prompts use the full sequence and a cue at each turn.</span></p>
-    <div class="journey-figures">${Object.entries(referenceQuestions).map(([id,points])=>`<figure class="journey-figure" ${interactive?`id="curve-${id}" tabindex="-1"`:''}>
-      <figcaption><b>${id}</b> ${esc(journeyName(id))}</figcaption>
-      ${journeyCurve(id,points.map(([q])=>q))}
-      <div class="question-markers">${points.map(([q,context])=>`<span data-journey-question="${q}"><b>Q${q}</b> ${esc(context)}</span>`).join('')}</div></figure>`).join('')}</div>`;
+function patternScores({p,q,cue,c}) {
+  const selected = data.runs.filter(r=>r.product===p&&r.cue===cue);
+  return `<div class="pattern-scores"><p class="pattern-criterion">${criterionLabel(c)} · change from baseline at Q${q} · n=${selected.length}</p>
+    <table class="pattern-table"><thead><tr>${judges.map(([,name,cls])=>`<th scope="col" class="${cls} judge-name">${name}</th>`).join('')}</tr></thead><tbody><tr>${judges.map(([j])=>{
+      const s=turnStats(selected,j,c,[q]);
+      const full=turnStats(fullBios(selected),j,c,[q]);
+      return `<td class="delta-cell ${direction(s.delta)}" style="--tint:${Math.min(Math.abs(s.delta)/.9,.68)}"><b>${signedAtPrecision(s.delta)}</b><small>Full bio ${signedAtPrecision(full.delta)}</small></td>`;
+    }).join('')}</tr></tbody></table></div>`;
 }
 
-function showJourneyPoint(event) {
-  const button = event.target.closest('[data-journey-jump]');
-  if (!button) return;
-  const figure = $(`curve-${button.dataset.journeyJump}`);
-  $('dashboard-trajectory').querySelectorAll('.selected-question').forEach(el=>el.classList.remove('selected-question'));
-  figure.querySelector(`[data-journey-question="${button.dataset.question}"]`).classList.add('selected-question');
-  figure.querySelector(`[data-turn="${button.dataset.question}"]`).classList.add('selected-question');
-  figure.focus({preventScroll:true});
-  figure.scrollIntoView({block:'center'});
+function patternComparison({p,q,cue,c}) {
+  const other = data.runs.filter(r=>r.product===p&&r.cue!==cue&&r.cue.split(' ')[1]===cue.split(' ')[1]);
+  const comparison = judges.map(([j,n])=>`${signedAtPrecision(turnStats(other,j,c,[q]).delta)} ${n}`).join(' · ');
+  return `<p class="other-journeys">Other ${cue.endsWith('coarse')?'brief':'detailed'} journeys at Q${q} averaged ${comparison}.</p>`;
+}
+
+function findingCard(pattern, interactive) {
+  const {p,q,cue,proof} = pattern;
+  const item = data.cases[caseIndex[proof]-1];
+  return `<article class="journey-finding" data-pattern="${p}/${cue}/${q}">
+    <p class="case-meta">${data.products[p]} · ${cueNames[cue]}${item?'':' · comparison'}</p>
+    <h3>Q${q} · ${esc(questionLabel(p,q))}</h3>
+    <div class="finding-context">${markedJourney(cue,q)}${patternScores(pattern)}</div>
+    ${item?`<p class="finding-change"><strong>${people[item.person]}.</strong> ${esc(item.change)}</p>`:`<p class="finding-change">Same wellness question as Steady Warm-Up, with the brief High-Energy Positive Dip &amp; Recovery cue.</p>`}
+    ${patternComparison(pattern)}
+    ${interactive&&item?`<details class="details inline-pair"><summary>Read the full answer pair</summary><p class="inline-question">${esc(item.question)}</p>${pairComparison(item)}<p><a href="#evidence/${caseIndex[proof]}">Open answer pair</a></p></details>`:''}
+  </article>`;
 }
 
 function signalSection(interactive) {
-  const rows = patterns.map(({p, q, cue, c, proof}) => {
-    const selected = data.runs.filter(r=>r.product===p&&r.cue===cue);
-    const other = data.runs.filter(r=>r.product===p&&r.cue!==cue&&r.cue.split(' ')[1]===cue.split(' ')[1]);
-    const detail = interactive ? `<p class="signal-sub">Same question, other ${cue.endsWith('coarse')?'brief':'detailed'} journeys averaged ${signed(turnStats(other,'C',c,[q]).delta)} Claude and ${signed(turnStats(other,'G',c,[q]).delta)} GPT. <a href="#evidence/${caseIndex[proof]}">See an answer pair</a>. <button class="curve-jump" type="button" data-journey-jump="${cue.split(' ')[0]}" data-question="${q}">Show Q${q} on curve</button></p>` : '';
-    return `<tr><th scope="row">${data.products[p]} · Q${q}<small>${esc(questionLabel(p,q))}</small><small>${cueNames[cue]} · ${criterionLabel(c)} · n=${selected.length}</small>${detail}</th>${judges.map(([j])=>{
-      const s=turnStats(selected,j,c,[q]);const f=turnStats(fullBios(selected),j,c,[q]);
-      return `<td class="delta-cell ${direction(s.delta)}" style="--tint:${Math.min(Math.abs(s.delta)/.9,.68)}"><b>${signed(s.delta)}</b><small>Full bio ${signed(f.delta)}</small></td>`;
-    }).join('')}</tr>`;
-  }).join('');
-  return `<h2>Where a particular journey helped or hurt</h2><p>Six exploratory patterns selected from 672 contrasts per judge. Each row compares one configuration to baseline, with a five-persona full-biography check.</p><div class="table-scroll"><table class="study-grid signals"><thead><tr><th scope="col">Question and configuration</th><th scope="col" class="claude judge-name">Claude</th><th scope="col" class="gpt judge-name">GPT</th></tr></thead><tbody>${rows}</tbody></table></div><p class="reading-notes">Every row kept its overall direction under both judges when omitting any one persona. The check-in gain became flat for Claude in the full-biography subset.</p><p class="reading-notes">For the sexual health partner question, C1 brief averaged ${signed(turnStats(data.runs.filter(r=>r.product==='sexual-health'&&r.cue==='C1 coarse'),'C','consequence',[6]).delta)} Claude and ${signed(turnStats(data.runs.filter(r=>r.product==='sexual-health'&&r.cue==='C1 coarse'),'G','consequence',[6]).delta)} GPT. C1 detailed moved the scores in the opposite direction.</p><p class="reading-notes">On the subscription routine question, the other detailed journeys averaged ${judges.map(([j,n])=>`${signed(turnStats(data.runs.filter(r=>r.product==='subscription-management'&&r.cue.endsWith('fine')&&r.cue!=='C2 fine'),j,'consequence',[7]).delta)} ${n}`).join(' and ')}.</p>`;
+  const [briefC,briefG] = judges.map(([j])=>signed(turnStats(data.runs.filter(r=>r.product==='sexual-health'&&r.cue==='C1 coarse'),j,'consequence',[6]).delta));
+  return `<h2>More question-level findings</h2><p>${curveLegend}</p><div class="pattern-grid">${otherPatterns.map(p=>findingCard(p,interactive)).join('')}</div>
+    <div class="reading-notes"><p>For the sexual health partner question, Roller-Coaster / Cools Off brief averaged ${briefC} Claude and ${briefG} GPT. The detailed cue moved the scores in the opposite direction.</p></div>`;
+}
+
+function featuredPairs(interactive) {
+  return `<h2>Two mental wellness questions show a gain and a loss</h2><p class="pair-legend">${curveLegend} Green highlights the grounded wording. Tan highlights the corresponding baseline wording.</p>
+    <div class="featured-pairs">${featuredPatterns.map(pattern=>{
+      const item = data.cases[caseIndex[pattern.proof]-1];
+      return `<article class="paper-pair featured-pair" data-pattern="${pattern.p}/${pattern.cue}/${pattern.q}">
+        <h3>${esc(item.title)}</h3>${pairContent(item,pattern)}
+        ${patternComparison(pattern)}
+        ${interactive?`<p class="full-pair-link"><a href="#evidence/${caseIndex[pattern.proof]}">Open answer pair details</a></p>`:''}
+      </article>`;
+    }).join('')}</div>
+    <div class="reading-notes"><p>Six patterns were selected after reviewing 672 contrasts per judge. Their direction held for both judges when omitting any one persona. Claude’s check-in gain was flat in the full-biography subset. The brief High-Energy Positive Dip &amp; Recovery card provides a comparison at wellness Q7.</p></div>`;
 }
 
 function journeyMethod() {
@@ -406,11 +495,6 @@ function renderAtlas() {
     `<div class="table-scroll"><table class="study-grid atlas"><caption class="${cls} judge-name">${name}</caption><thead><tr><th scope="col">${grouped?'Prompt type':'Question'}</th><th scope="col">All eight</th>${cues.map(([,n])=>`<th scope="col">${n}</th>`).join('')}</tr></thead><tbody>${groups.map(({label,sub,turns,full})=>`<tr><th scope="row" title="${esc(full)}">${esc(label)}<small>${esc(sub)}</small></th>${deltaCell(turnStats(rows,j,c,turns))}${cues.map(([k])=>deltaCell(turnStats(rows.filter(r=>r.cue===k),j,c,turns))).join('')}</tr>`).join('')}</tbody></table></div>`).join('')}`;
 }
 
-function printEvidence(run) {
-  const e = data.cases[caseIndex[run]-1];
-  return `<article class="paper-pair"><h3>${esc(e.title)}</h3><p class="case-meta">${data.products[e.product]} · ${people[e.person]} · ${cueNames[e.cue]} · Q${e.q}</p><p class="print-question">${esc(e.question)}</p><div class="answer-grid"><div class="answer baseline"><strong>Baseline</strong><p>${highlight(e.baseline,e.baselineMark)}</p></div><div class="answer"><strong>Grounded</strong><p>${highlight(e.grounded,e.groundedMark)}</p></div></div>${scoreTable(e)}<p>${esc(e.change)}</p></article>`;
-}
-
 function checksSection() {
   const human = criteria.map(([c,name])=>`<span>${name} ${signed(data.scope.human[c])}</span>`).join(' · ');
   return `<h2>Robustness and human ratings</h2>
@@ -420,28 +504,35 @@ function checksSection() {
     <table class="study-grid secondary"><thead><tr><th scope="col">Other rubric dimensions · all products</th><th scope="col" class="claude judge-name">Claude</th><th scope="col" class="gpt judge-name">GPT</th></tr></thead><tbody>${Object.keys(data.secondary.C).map(c=>`<tr><th scope="row">${c}</th>${judges.map(([j])=>`<td>${signed(data.secondary[j][c],3)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
+function studyDesign() {
+  return `<h2>Study design</h2><p>Does behavioral grounding in synthetic interviews improve feedback quality for particular criteria and product scenarios?</p>
+    <div class="study-flow"><div><b>5 personas × 4 products × 3 biographies</b><span>60 planned sets, 56 complete</span></div><div><b>1 text-only baseline per set</b><span>Same persona, product, biography and questions</span></div><div><b>8 grounded interviews per set</b><span>4 emotional journeys × brief or detailed cues</span></div><div><b>448 matched interview comparisons</b><span>7 questions per interview. Same 0–3 rubric for both judges.</span></div></div>
+    <p><strong>Brief</strong> supplies an opening cue and broad rules. <strong>Detailed</strong> adds rules, the full trajectory and turn-specific cues.</p><p><strong>Specificity</strong> captures precise details. <strong>Consequence</strong> captures what the feedback means for a user. <strong>Insight</strong> captures a usable product implication.</p>
+    <p class="paper-fine">The four incomplete sets were Filomena’s shorter biographies for wellness and subscriptions. Questions share an interview and the eight comparisons reuse one baseline. Study results are descriptive.</p>`;
+}
+
+function productImplications() {
+  return `<h2>Product implications</h2><p>Test an explanation of how check-in information will be used before asking for more. For quick activities, check whether each option gives enough detail to make a choice.</p><p class="paper-fine">These are hypotheses from synthetic feedback. The study measured rubric scores on answers, and human testing would establish how people respond.</p>`;
+}
+
 function renderPrint() {
   const [cl,gp] = sharedChange;
   $('print-sheet').innerHTML = `<div class="hero"><p class="poster-study-name">Northwestern × Accenture Capstone</p><h1 id="poster-title">Behavioral grounding clarified user consequences most consistently in mental wellness</h1><p>Effects varied by product, evaluation criterion and interview question.</p></div>
   <div class="finding-grid"><article class="finding claude"><span>Claude · Mental wellness consequence</span><strong class="judge-val">${signed(cl.delta)}</strong><p>${cl.baseline.toFixed(2)} → ${cl.grounded.toFixed(2)} on a 0–3 rubric</p></article><article class="finding gpt"><span>GPT · Mental wellness consequence</span><strong class="judge-val">${signed(gp.delta)}</strong><p>${gp.baseline.toFixed(2)} → ${gp.grounded.toFixed(2)} on a 0–3 rubric</p></article><article class="finding"><span>Positive averages under both judges</span><strong>${sharedPeople}/5 personas · ${sharedCues}/8 configurations</strong><p>104 matched mental wellness interview comparisons</p></article></div>
   <div class="paper-columns">
     <div class="paper-column method-column">
-      <section class="panel"><h2>Study design</h2><p>Does behavioral grounding in synthetic interviews improve feedback quality for particular criteria and product scenarios?</p>
-        <div class="study-flow"><div><b>5 personas × 4 products × 3 biographies</b><span>60 planned sets, 56 complete</span></div><div><b>1 text-only baseline per set</b><span>Same persona, product, biography and questions</span></div><div><b>8 grounded interviews per set</b><span>4 emotional journeys × brief or detailed cues</span></div><div><b>448 matched interview comparisons</b><span>7 questions per interview. Same 0–3 rubric for both judges.</span></div></div>
-        <p><strong>Brief</strong> supplies an opening cue and broad rules. <strong>Detailed</strong> adds rules, the full trajectory and turn-specific cues.</p><p><strong>Specificity</strong> captures precise details. <strong>Consequence</strong> captures what the feedback means for a user. <strong>Insight</strong> captures a usable product implication.</p>
-        <p class="paper-fine">The four incomplete sets were Filomena’s shorter biographies for wellness and subscriptions. Questions share an interview and the eight comparisons reuse one baseline. Study results are descriptive.</p>
-      </section>
-      <section class="panel">${signalSection(false)}</section>
-      <section class="panel paper-trajectories">${journeyReferenceSection(false)}</section>
+      <section class="panel">${studyDesign()}</section>
+      <section class="panel paper-patterns">${signalSection(false)}</section>
     </div>
     <div class="paper-column results-column">
       <section class="panel">${gridSection()}</section>
       <section class="panel">${wellnessSection()}</section>
       <section class="panel caveats">${checksSection()}</section>
+      <section class="panel paper-dot-plot"><h2>Consequence changes by persona</h2><p>All eight configurations. ${deltaPlotLegend}</p>${chart(data.runs,'consequence')}</section>
     </div>
     <div class="paper-column evidence-column">
-      <section class="panel"><h2>Read the changed wording</h2><p>Q3 and Q4 are marked on <strong>Guarded → Late Disgust Drop (C2)</strong> at left. These wellness pairs illustrate a gain and a loss.</p>${printEvidence(patterns[1].proof)}${printEvidence(patterns[2].proof)}</section>
-      <section class="panel"><h2>Product implication</h2><p>Test an explanation of how check-in information will be used before asking for more. For quick activities, check whether each option gives enough detail to make a choice.</p><p class="paper-fine">These are hypotheses from synthetic feedback. The study measured rubric scores on answers, and human testing would establish how people respond.</p></section>
+      <section class="panel paper-featured">${featuredPairs(false)}</section>
+      <section class="panel">${productImplications()}</section>
       <section class="panel paper-matrix"><h2>What the selected pairs added</h2><p>New or more precise points in three reviewed pairs per product. A pair can contribute to several rows.</p>${matrixTable(newOrSharper,false)}<p class="paper-fine">The 12 pairs were selected to include a consequence gain, tie and decline in each product.</p></section>
     </div>
   </div>
@@ -477,13 +568,15 @@ $('status-filter').innerHTML = `<option value="added">New or more precise</optio
 $('status-filter').addEventListener('change',renderMatrix);
 $('matrix').addEventListener('click',matrixClick);
 $('methods').innerHTML = `<p>The <a href="https://capstone-experimentstudio.vercel.app/experiment-studio.html#compare">Experiment Studio</a> snapshot contains ${data.scope.interviews} distinct interviews, of which ${data.scope.scoredInterviews} have scores from both current judges. We included ${data.scope.sets} complete sets with a baseline and eight grounded interviews for the same persona, product and biography. Four sets were incomplete, all shorter biographies for Filomena in mental wellness or subscriptions.</p><p>Each interview score is the mean of its seven question scores. Each grounded interview is compared with the matched baseline. Baselines are reused across conditions and both judges score the same answers. The brief and detailed prompts differ in content and delivery timing.</p><p>Submitted human scores overlap on ${data.scope.humanN} question comparisons for Filomena’s full-biography subscription interviews. Human medians change by ${signed(data.scope.human.specificity)} for specificity, ${signed(data.scope.human.consequence)} for consequence and ${signed(data.scope.human.insight)} for insight. The chart reports model judgments of synthetic answers.</p>`;
+$('plot-legend').textContent = deltaPlotLegend;
 $('source-note').textContent = `Experiment Studio scores retrieved ${data.retrieved}.`;
 $('print-poster').addEventListener('click',() => window.print());
 window.addEventListener('hashchange',route);
+$('dashboard-study-design').innerHTML = studyDesign();
 $('dashboard-score-grid').innerHTML = gridSection()+`<details class="details"><summary>Other rubric dimensions and sensitivity checks</summary>${checksSection()}</details>`;
-$('dashboard-signals').innerHTML = signalSection(true);
-$('dashboard-trajectory').innerHTML = journeyReferenceSection(true);
-$('dashboard-signals').addEventListener('click', showJourneyPoint);
+$('dashboard-signals').innerHTML = featuredPairs(true);
+$('dashboard-journey-patterns').innerHTML = signalSection(true);
+$('dashboard-implications').innerHTML = productImplications();
 $('dashboard-wellness').innerHTML = wellnessSection();
 $('journey-method').innerHTML = journeyMethod();
 $('journey-filters').innerHTML = `<label class="select-label">Product<select id="atlas-product">${products.map(([p,n])=>`<option value="${p}">${n}</option>`).join('')}</select></label><label class="select-label">Criterion<select id="atlas-criterion">${criteria.map(([c,n])=>`<option value="${c}">${n}</option>`).join('')}</select></label><label class="select-label">Show rows by<select id="atlas-group"><option value="question">Question</option><option value="phase">Prompt type</option></select></label><label class="select-label">Included profiles<select id="atlas-cohort"><option value="all">All complete matches</option><option value="full">Full biographies only</option><option value="common">Four fully covered personas</option></select></label>`;
